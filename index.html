@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>에테리아 모바일 RPG 엔진</title>
+  <style>
+    /* 추후 디자인 수정 시 이 style 태그 내부만 다듬으시면 됩니다 */
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif; }
+    body { background: #11131c; color: #e2e8f0; padding: 8px; font-size: 13px; }
+    .panel { background: #181b28; border: 1px solid #2d3348; border-radius: 10px; padding: 10px; max-width: 540px; margin: 0 auto; }
+    .top-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid #2a3045; }
+    .stat-line { font-size: 12px; font-weight: 600; }
+    .nav-btns { display: flex; gap: 4px; }
+    button { background: #262b3e; color: #f1f5f9; border: 1px solid #38405c; border-radius: 6px; padding: 7px 10px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: left; }
+    button:active { transform: scale(0.98); }
+    button:disabled { background: #1a1d29; color: #525a75; border-color: #242838; cursor: not-allowed; }
+    button.active { background: #4f46e5; border-color: #6366f1; }
+    .drawer { background: #121520; border: 1px solid #2a3045; border-radius: 8px; padding: 8px; margin-top: 8px; display: none; flex-direction: column; gap: 6px; }
+    .drawer.open { display: flex; }
+    .section-title { font-size: 11px; color: #94a3b8; margin-top: 10px; margin-bottom: 4px; font-weight: bold; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+    .flex-col { display: flex; flex-direction: column; gap: 5px; }
+    .flex-wrap { display: flex; flex-wrap: wrap; gap: 5px; }
+    .offer-box { background: #1e293b; border: 1px solid #d97706; border-radius: 8px; padding: 8px; margin-top: 8px; }
+    .enemy-box { background: #2c151b; border: 1px solid #e11d48; border-radius: 8px; padding: 7px 9px; margin-top: 8px; display: flex; justify-content: space-between; font-weight: bold; color: #fda4af; }
+    .btn-atk { background: #7f1d1d; border-color: #991b1b; }
+    .btn-heal { background: #115e59; border-color: #0f766e; }
+    .btn-move { background: #1e3a8a; border-color: #1d4ed8; }
+    .btn-yes { background: #065f46; border-color: #059669; text-align: center; }
+    .btn-no { background: #7f1d1d; border-color: #dc2626; text-align: center; }
+    input, select { background: #1e2233; color: #fff; border: 1px solid #3b425e; border-radius: 4px; padding: 5px 7px; font-size: 12px; }
+    .toast { margin-top: 8px; padding: 7px; background: #0f172a; border: 1px solid #38bdf8; border-radius: 6px; color: #7dd3fc; font-size: 11px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <!-- 1. 상단 스테이터스 바 -->
+    <div class="top-bar">
+      <div class="stat-line" id="topStat">로딩 중...</div>
+      <div class="nav-btns">
+        <button id="btnToggleStatus" onclick="toggleDrawer('status')">상태창</button>
+        <button id="btnToggleTree" onclick="toggleDrawer('tree')">스킬트리</button>
+      </div>
+    </div>
+
+    <!-- 접이식 상태창 -->
+    <div class="drawer" id="drawerStatus"></div>
+
+    <!-- 접이식 스킬트리 & 백지 상태창 -->
+    <div class="drawer" id="drawerTree"></div>
+
+    <!-- 2. NPC 제안 / 퀘스트 수락·거절 영역 -->
+    <div id="offerArea"></div>
+
+    <!-- 3. 적 상태 표시 영역 -->
+    <div id="enemyArea"></div>
+
+    <!-- 4. 스킬 사용 버튼 영역 -->
+    <div class="section-title">스킬 사용</div>
+    <div class="grid-2" id="skillArea"></div>
+
+    <!-- 5. 상황 행동 선택창 영역 -->
+    <div id="choiceWrapper">
+      <div class="section-title">행동 선택</div>
+      <div class="flex-col" id="choiceArea"></div>
+    </div>
+
+    <!-- 6. 이동 루트 영역 -->
+    <div id="routeWrapper">
+      <div class="section-title">이동 루트</div>
+      <div class="flex-wrap" id="routeArea"></div>
+    </div>
+
+    <!-- 결과 로그 알림창 -->
+    <div class="toast" id="toastBox"></div>
+  </div>
+
+  <script>
+    // === 1. 기본 플레이어 데이터 (로컬 저장소 유지) ===
+    const DEFAULT_PLAYER = {
+      job: '미각성 전생자',
+      lv: 1, exp: 0, maxExp: 100, sp: 3,
+      hp: 100, maxHp: 100, mp: 50, maxMp: 50, gold: 100,
+      stats: { str: 10, agi: 10, int: 10, luk: 10 },
+      skills: [
+        { id: 's1', name: '기본 베기', type: 'atk', power: 18, mp: 0, chance: 90, cd: 0, maxCd: 0, unlocked: true, desc: '기본 물리 공격' },
+        { id: 's2', name: '응급 치유', type: 'heal', power: 30, mp: 12, chance: 95, cd: 0, maxCd: 2, unlocked: true, desc: 'HP 30 회복 (쿨 2턴)' },
+        { id: 's3', name: '강타', type: 'atk', power: 42, mp: 15, chance: 75, cd: 0, maxCd: 3, unlocked: false, costSp: 1, desc: '강력한 일격 (1 SP)' },
+        { id: 's4', name: '마력 폭발', type: 'atk', power: 75, mp: 28, chance: 80, cd: 0, maxCd: 4, unlocked: false, costSp: 2, desc: '고위력 마법 (2 SP)' }
+      ],
+      quests: [],
+      lastTurn: 0
+    };
+
+    // AI가 데이터를 안 넘겼을 때 보여줄 기본 샘플 데이터
+    let turnData = {
+      turn: 1,
+      loc: '시작의 광장',
+      routes: ['블루점프 길드', '스콘 상단', '왕국 정문', '남부 초원'],
+      offer: null,
+      enemy: null,
+      choices: ['다가온 모험가들에게 인사를 건넨다', '광장 게시판을 살펴본다'],
+      reward: null
+    };
+
+    let player = loadPlayer();
+    let currentDrawer = null;
+
+    function loadPlayer() {
+      try {
+        const saved = localStorage.getItem('etheria_render_rpg_v1');
+        return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_PLAYER));
+      } catch {
+        return JSON.parse(JSON.stringify(DEFAULT_PLAYER));
+      }
+    }
+
+    function savePlayer() {
+      try { localStorage.setItem('etheria_render_rpg_v1', JSON.stringify(player)); } catch {}
+    }
+
+    // === 2. URL 파라미터(?data=...) 및 부모창(postMessage) 데이터 파싱 ===
+    function parseIncomingData() {
+      const params = new URLSearchParams(window.location.search);
+      const rawData = params.get('data') || params.get('props');
+      if (rawData) {
+        try {
+          const parsed = JSON.parse(decodeURIComponent(rawData));
+          turnData = { ...turnData, ...parsed };
+        } catch (e) {
+          console.error('URL JSON 파싱 오류:', e);
+        }
+      }
+      applyTurnRewards();
+    }
+
+    window.addEventListener('message', (event) => {
+      if (event.data && typeof event.data === 'object') {
+        const payload = event.data.props || event.data.data || event.data;
+        if (payload.turn || payload.loc || payload.choices) {
+          turnData = { ...turnData, ...payload };
+          applyTurnRewards();
+          render();
+        }
+      }
+    });
+
+    function applyTurnRewards() {
+      const r = turnData.reward;
+      if (r && player.lastTurn !== turnData.turn) {
+        player.exp += (r.exp || 0);
+        player.sp += (r.sp || 0);
+        player.gold += (r.gold || 0);
+        while (player.exp >= player.maxExp) {
+          player.lv += 1;
+          player.exp -= player.maxExp;
+          player.maxExp = Math.floor(player.maxExp * 1.4);
+          player.sp += 2;
+        }
+        player.lastTurn = turnData.turn;
+        savePlayer();
+      }
+    }
+
+    // === 3. 채팅창으로 액션 결과 전송 ===
+    function sendToChat(text) {
+      // 1) iframe 부모 창으로 전송 시도 (플랫폼 표준 규격)
+      try {
+        window.parent.postMessage({ type: 'sendMessage', message: text, text: text }, '*');
+      } catch {}
+
+      // 2) 클립보드 자동 복사 및 토스트 안내 (수동 붙여넣기 대비)
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).catch(() => {});
+      }
+      const toast = document.getElementById('toastBox');
+      toast.style.display = 'block';
+      toast.textContent = `전송(복사) 완료: ${text}`;
+      render();
+    }
+
+    // === 4. 게임 로직 (스킬 연산, 퀘스트 수락/거절, 이동, 백지 각성) ===
+    function useSkill(skillId) {
+      const sk = player.skills.find(s => s.id === skillId);
+      if (!sk || sk.cd > 0 || player.mp < sk.mp) return;
+
+      const hit = Math.random() * 100 <= sk.chance;
+      const crit = hit && Math.random() < (0.1 + player.stats.luk * 0.01);
+      player.mp -= sk.mp;
+
+      player.skills.forEach(s => {
+        if (s.id === sk.id) s.cd = s.maxCd;
+        else if (s.cd > 0) s.cd -= 1;
+      });
+
+      let log = '';
+      if (sk.type === 'heal') {
+        const amount = crit ? Math.floor(sk.power * 1.5) : sk.power;
+        player.hp = Math.min(player.maxHp, player.hp + amount);
+        log = `[스킬] '${sk.name}' 사용 → HP +${amount} 회복 (HP ${player.hp}/${player.maxHp}, MP ${player.mp}/${player.maxMp})`;
+      } else if (!hit) {
+        log = `[전투] '${sk.name}' 사용 → 빗나감 (명중 ${sk.chance}% 실패 | MP ${player.mp}/${player.maxMp})`;
+      } else {
+        const base = sk.power + Math.floor(player.stats.str * 0.8);
+        const dmg = crit ? Math.floor(base * 1.6) : base;
+        if (turnData.enemy) {
+          turnData.enemy.hp = Math.max(0, turnData.enemy.hp - dmg);
+          log = `[전투] '${sk.name}' ${crit ? '치명타 ' : ''}${dmg} 피해 (${turnData.enemy.name} HP ${turnData.enemy.hp}/${turnData.enemy.maxHp})`;
+          if (turnData.enemy.hp > 0) {
+            const counter = Math.max(1, (turnData.enemy.atk || 10) - Math.floor(player.stats.agi * 0.2));
+            player.hp = Math.max(0, player.hp - counter);
+            log += ` → 적 반격 -${counter} (내 HP ${player.hp}/${player.maxHp})`;
+          } else {
+            log += ` → ${turnData.enemy.name} 처치 완료`;
+          }
+        } else {
+          log = `[스킬] '${sk.name}' 발동 → ${crit ? '치명타 ' : ''}${dmg} 위력 (MP ${player.mp}/${player.maxMp})`;
+        }
+      }
+
+      savePlayer();
+      sendToChat(log);
+    }
+
+    function respondOffer(accept) {
+      const o = turnData.offer;
+      if (!o) return;
+      if (accept) {
+        if (o.type === '퀘스트') {
+          player.quests.push({ title: o.title, from: o.from, reward: o.reward || '' });
+          savePlayer();
+        }
+        sendToChat(`[수락] ${o.from}의 ${o.type} '${o.title}' 수락`);
+      } else {
+        sendToChat(`[거절] ${o.from}의 ${o.type} '${o.title}' 거절`);
+      }
+    }
+
+    function moveRoute(dest) {
+      player.skills.forEach(s => { if (s.cd > 0) s.cd -= 1; });
+      savePlayer();
+      sendToChat(`[이동] '${turnData.loc}'에서 '${dest}'(으)로 이동`);
+    }
+
+    function unlockSkill(id) {
+      const sk = player.skills.find(s => s.id === id);
+      if (!sk || sk.unlocked || player.sp < sk.costSp) return;
+      player.sp -= sk.costSp;
+      sk.unlocked = true;
+      savePlayer();
+      render();
+    }
+
+    function awakenBlankStatus() {
+      const jobVal = document.getElementById('inputJob').value.trim();
+      const skillVal = document.getElementById('inputSkill').value.trim();
+      const typeVal = document.getElementById('selectSkillType').value;
+      const logs = [];
+
+      if (jobVal) {
+        player.job = jobVal;
+        logs.push(`직업 '${jobVal}' 각성`);
+      }
+      if (skillVal) {
+        player.skills.push({
+          id: 'c_' + Date.now(),
+          name: skillVal,
+          type: typeVal,
+          power: typeVal === 'atk' ? 45 : 40,
+          mp: 15, chance: 85, cd: 0, maxCd: 2,
+          unlocked: true,
+          desc: '백지 상태창 창조 스킬'
+        });
+        logs.push(`고유 스킬 '${skillVal}' 등록`);
+      }
+      if (logs.length > 0) {
+        savePlayer();
+        sendToChat(`[백지 상태창] ${logs.join(', ')}`);
+      }
+    }
+
+    function resetSave() {
+      localStorage.removeItem('etheria_render_rpg_v1');
+      player = JSON.parse(JSON.stringify(DEFAULT_PLAYER));
+      render();
+    }
+
+    function toggleDrawer(name) {
+      currentDrawer = currentDrawer === name ? null : name;
+      render();
+    }
+
+    // === 5. 화면 렌더링 ===
+    function render() {
+      // 상단 바
+      document.getElementById('topStat').innerHTML =
+        `[${turnData.loc}] T${turnData.turn} · ❤️${player.hp}/${player.maxHp} · 💧${player.mp}/${player.maxMp} · 💰${player.gold}G`;
+      document.getElementById('btnToggleTree').textContent = `스킬트리(${player.sp})`;
+      document.getElementById('btnToggleStatus').className = currentDrawer === 'status' ? 'active' : '';
+      document.getElementById('btnToggleTree').className = currentDrawer === 'tree' ? 'active' : '';
+
+      // 상태창 드로어
+      const dStatus = document.getElementById('drawerStatus');
+      dStatus.className = 'drawer' + (currentDrawer === 'status' ? ' open' : '');
+      dStatus.innerHTML = `
+        <div><strong>직업:</strong> ${player.job} (LV.${player.lv} | EXP ${player.exp}/${player.maxExp})</div>
+        <div><strong>스탯:</strong> 근력 ${player.stats.str} / 민첩 ${player.stats.agi} / 지능 ${player.stats.int} / 행운 ${player.stats.luk}</div>
+        <div><strong>수락한 퀘스트:</strong> ${player.quests.length ? player.quests.map(q => q.title).join(', ') : '없음'}</div>
+        <button class="btn-no" onclick="resetSave()">세이브 초기화</button>
+      `;
+
+      // 스킬트리 & 백지 상태창 드로어
+      const dTree = document.getElementById('drawerTree');
+      dTree.className = 'drawer' + (currentDrawer === 'tree' ? ' open' : '');
+      dTree.innerHTML = `
+        <div style="font-weight:bold; color:#a5b4fc;">[백지 상태창] 직업 / 스킬 직접 창조</div>
+        <input id="inputJob" placeholder="각성할 직업명 입력 (예: 그림자 마검사)" />
+        <div style="display:flex; gap:4px;">
+          <input id="inputSkill" style="flex:1;" placeholder="창조할 고유 스킬명" />
+          <select id="selectSkillType"><option value="atk">공격</option><option value="heal">회복</option></select>
+          <button class="active" onclick="awakenBlankStatus()">각인</button>
+        </div>
+        <div style="font-weight:bold; margin-top:4px;">스킬트리 (보유 SP: ${player.sp})</div>
+        ${player.skills.map(s => `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#181b28; padding:6px; border-radius:4px;">
+            <span>${s.name} (${s.desc})</span>
+            ${s.unlocked
+              ? '<span style="color:#34d399; font-weight:bold;">[습득됨]</span>'
+              : `<button ${player.sp < s.costSp ? 'disabled' : ''} onclick="unlockSkill('${s.id}')">해금(${s.costSp}SP)</button>`}
+          </div>
+        `).join('')}
+      `;
+
+      // 제안/퀘스트 수락·거절
+      const offerArea = document.getElementById('offerArea');
+      if (turnData.offer) {
+        const o = turnData.offer;
+        offerArea.innerHTML = `
+          <div class="offer-box">
+            <div style="font-weight:bold; color:#fbbf24;">[${o.type}] ${o.title} (${o.from})</div>
+            <div style="margin:4px 0; font-size:12px;">${o.desc} ${o.reward ? `(보상: ${o.reward})` : ''}</div>
+            <div class="grid-2" style="margin-top:6px;">
+              <button class="btn-yes" onclick="respondOffer(true)">[수락한다]</button>
+              <button class="btn-no" onclick="respondOffer(false)">[거절한다]</button>
+            </div>
+          </div>`;
+      } else {
+        offerArea.innerHTML = '';
+      }
+
+      // 적 정보
+      const enemyArea = document.getElementById('enemyArea');
+      if (turnData.enemy) {
+        enemyArea.innerHTML = `
+          <div class="enemy-box">
+            <span>[적] ${turnData.enemy.name}</span>
+            <span>HP ${turnData.enemy.hp} / ${turnData.enemy.maxHp}</span>
+          </div>`;
+      } else {
+        enemyArea.innerHTML = '';
+      }
+
+      // 스킬 버튼
+      document.getElementById('skillArea').innerHTML = player.skills
+        .filter(s => s.unlocked)
+        .map(s => {
+          const disabled = s.cd > 0 || player.mp < s.mp;
+          const label = s.cd > 0 ? `(쿨 ${s.cd}턴)` : `(MP ${s.mp} · ${s.chance}%)`;
+          return `<button class="${s.type === 'heal' ? 'btn-heal' : 'btn-atk'}" ${disabled ? 'disabled' : ''} onclick="useSkill('${s.id}')">
+            ${s.name} ${label}
+          </button>`;
+        }).join('');
+
+      // 행동 선택지
+      const cWrap = document.getElementById('choiceWrapper');
+      if (turnData.choices && turnData.choices.length > 0) {
+        cWrap.style.display = 'block';
+        document.getElementById('choiceArea').innerHTML = turnData.choices
+          .map(c => `<button onclick="sendToChat('[행동] ${c.replace(/'/g, "\\'")}')">▸ ${c}</button>`)
+          .join('');
+      } else {
+        cWrap.style.display = 'none';
+      }
+
+      // 이동 루트
+      const rWrap = document.getElementById('routeWrapper');
+      if (turnData.routes && turnData.routes.length > 0) {
+        rWrap.style.display = 'block';
+        document.getElementById('routeArea').innerHTML = turnData.routes
+          .map(r => `<button class="btn-move" onclick="moveRoute('${r.replace(/'/g, "\\'")}')">→ ${r}</button>`)
+          .join('');
+      } else {
+        rWrap.style.display = 'none';
+      }
+    }
+
+    parseIncomingData();
+    render();
+  </script>
+</body>
+</html>
