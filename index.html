@@ -162,6 +162,32 @@
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      cursor: pointer;
+    }
+    .condition-badge:active {
+      background: rgba(251, 191, 36, 0.28);
+    }
+
+    /* 특이사항 상세 카드 (스텟 탭 내부용) */
+    .status-detail-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      background: #1c2030;
+      border: 1px solid rgba(251, 191, 36, 0.35);
+      border-radius: 6px;
+      padding: 5px 8px;
+    }
+    .status-detail-name {
+      font-size: 11px;
+      font-weight: 800;
+      color: #fde68a;
+    }
+    .status-detail-desc {
+      font-size: 10px;
+      color: #cbd5e1;
+      margin-top: 1px;
     }
 
     /* 이름 인라인 수정창 */
@@ -450,16 +476,6 @@
       justify-content: space-between;
       align-items: center;
     }
-    .slot-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 5px;
-    }
-    .slot-btns {
-      display: flex;
-      gap: 4px;
-    }
 
     /* 공통 배지(Pill) 스타일 */
     .stat-pill {
@@ -654,11 +670,6 @@
       background: #7f1d1d;
       border-color: #991b1b;
       color: #fecaca;
-    }
-    .mini-btn.warn {
-      background: #b45309;
-      border-color: #d97706;
-      color: #fef3c7;
     }
 
     /* 하단 기본 행동 영역 */
@@ -882,7 +893,7 @@
           </div>
         </div>
 
-        <!-- 상단 고정 특이사항 영역 -->
+        <!-- 상단 고정 특이사항 영역 (터치 시 효과 확인) -->
         <div class="condition-row" id="conditionRow">
           <span class="condition-title">✨ 특이사항</span>
           <div id="conditionList" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
@@ -941,7 +952,7 @@
         </div>
       </div>
 
-      <!-- 상시 노출 자율 입력칸: 신규 아이템 직접 습득 (무기/방어구/장신구/회복/기타 및 특수) -->
+      <!-- 상시 노출 자율 입력칸: 신규 아이템 직접 습득 -->
       <div class="creation-card">
         <div class="creation-title">
           <span>📦 [자율 습득] 신규 아이템 등록</span>
@@ -1038,28 +1049,20 @@
 
       <div id="statRowsList" class="flex-col"></div>
 
-      <div class="sub-section-box">
-        <div class="sub-section-label">✨ 특이사항 (축복 · 버프 · 저주)</div>
-        <div class="input-inline">
-          <input id="inputNewStatus" placeholder="예: 검술 수련 중, 여신의 가호" />
-          <button class="mini-btn primary" onclick="queueAddStatus()">추가</button>
-        </div>
-        <div id="drawerStatusBadges" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
-      </div>
-
+      <!-- 특이사항 (이름 + 효과/설명 입력) -->
       <div class="sub-section-box">
         <div class="sub-section-label">
-          <span>💾 페르소나별 세이브 슬롯</span>
-          <span id="personaProfileTag" style="color:#a5b4fc; font-size:10px;">프로필: 기본</span>
+          <span>✨ 특이사항 (축복 · 버프 · 저주)</span>
+          <span style="font-size:10px; color:#64748b;">상단 배지 터치 시 효과 표시</span>
         </div>
-        <div class="slot-bar">
-          <div class="slot-btns">
-            <button class="mini-btn" id="slotBtn1" onclick="switchSaveSlot(1)">슬롯 1</button>
-            <button class="mini-btn" id="slotBtn2" onclick="switchSaveSlot(2)">슬롯 2</button>
-            <button class="mini-btn" id="slotBtn3" onclick="switchSaveSlot(3)">슬롯 3</button>
+        <div class="input-row">
+          <input id="inputNewStatusName" placeholder="특이사항 이름 (예: 여신의 축복)" />
+          <div class="input-inline">
+            <input id="inputNewStatusDesc" placeholder="효과 / 설명 입력 (예: 모든 판정 보정 및 회복량 증가)" />
+            <button class="mini-btn primary" onclick="queueAddStatus()">추가</button>
           </div>
-          <button class="mini-btn danger" id="btnResetSlot" onclick="handleResetSlot()">초기화</button>
         </div>
+        <div id="drawerStatusList" class="flex-col"></div>
       </div>
     </div>
 
@@ -1111,26 +1114,7 @@
   </div>
 
   <script>
-    function cleanStr(s) {
-      return (s || '').replace(/_/g, ' ').trim();
-    }
-
-    // URL로 전달된 페르소나({user}) 기준으로 저장 공간을 자동 분리하여 페르소나 간 데이터 충돌 원천 차단
-    function getPersonaNamespace() {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        const rawUser = params.get('user') || params.get('name');
-        const cleaned = cleanStr(rawUser);
-        if (cleaned && cleaned !== '{user}' && cleaned !== '{{user}}') {
-          return cleaned;
-        }
-      } catch {}
-      return 'default';
-    }
-
-    const PERSONA_NS = getPersonaNamespace();
-    const SLOT_INDEX_KEY = `etheria_rpg_v3_${PERSONA_NS}_active_slot`;
-    const STORAGE_PREFIX = `etheria_rpg_v3_${PERSONA_NS}_slot_`;
+    const STORAGE_KEY = 'etheria_rpg_v4_state';
     const MAX_INVEN_SLOTS = 10;
     const MAX_SKILL_SLOTS = 8;
 
@@ -1158,7 +1142,7 @@
     ];
 
     const DEFAULT_PLAYER = {
-      name: PERSONA_NS !== 'default' ? PERSONA_NS : '모험가',
+      name: '모험가',
       customName: false,
       job: '미설정',
       lv: 1,
@@ -1227,16 +1211,18 @@
       reward: null
     };
 
-    let activeSlot = loadActiveSlot();
-    let player = loadPlayer(activeSlot);
+    let player = loadPlayer();
     let actionQueue = [];
 
     let activeDrawer = null;
     let expandedEquipSlot = null;
     let pendingVariableSkillId = null;
-    let pendingResetConfirm = false;
     let isEditingName = false;
     let incomingAlert = '';
+
+    function cleanStr(s) {
+      return (s || '').replace(/_/g, ' ').trim();
+    }
 
     function escapeHtml(str) {
       return String(str || '')
@@ -1250,13 +1236,24 @@
       return JSON.parse(JSON.stringify(obj));
     }
 
-    function loadActiveSlot() {
-      try {
-        const s = parseInt(localStorage.getItem(SLOT_INDEX_KEY), 10);
-        return (s >= 1 && s <= 3) ? s : 1;
-      } catch {
-        return 1;
+    function normalizeStatus(st) {
+      if (typeof st === 'string') {
+        const idx = st.indexOf(':');
+        if (idx !== -1) {
+          return {
+            name: st.slice(0, idx).trim() || '특이사항',
+            desc: st.slice(idx + 1).trim() || '적용 중인 특수 효과'
+          };
+        }
+        return { name: st.trim(), desc: '적용 중인 특수 효과' };
       }
+      if (st && typeof st === 'object') {
+        return {
+          name: String(st.name || '특이사항').trim(),
+          desc: String(st.desc || '적용 중인 특수 효과').trim()
+        };
+      }
+      return null;
     }
 
     function normalizeSkill(sk) {
@@ -1279,12 +1276,13 @@
       };
     }
 
-    function loadPlayer(slotNum) {
+    function loadPlayer() {
       try {
-        const raw = localStorage.getItem(STORAGE_PREFIX + slotNum);
+        const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return deepClone(DEFAULT_PLAYER);
         const parsed = JSON.parse(raw);
         const rawSkills = Array.isArray(parsed.skills) ? parsed.skills : DEFAULT_PLAYER.skills;
+        const rawStatuses = Array.isArray(parsed.statuses) ? parsed.statuses : [];
         const parsedStats = parsed.stats || {};
         return {
           ...deepClone(DEFAULT_PLAYER),
@@ -1296,6 +1294,7 @@
             vit: Number(parsedStats.vit) || 0,
             mnd: Number(parsedStats.mnd) || 0
           },
+          statuses: rawStatuses.map(normalizeStatus).filter(Boolean),
           equipment: {
             ...DEFAULT_PLAYER.equipment,
             ...(parsed.equipment || {})
@@ -1310,8 +1309,7 @@
 
     function savePlayer() {
       try {
-        localStorage.setItem(SLOT_INDEX_KEY, String(activeSlot));
-        localStorage.setItem(STORAGE_PREFIX + activeSlot, JSON.stringify(player));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(player));
       } catch {}
     }
 
@@ -1527,13 +1525,15 @@
           simPlayer.job = act.job;
           logText = `[스텟] 직업/칭호 '${act.job}' 설정`;
         } else if (act.type === 'add_status') {
-          if (!simPlayer.statuses.includes(act.status)) simPlayer.statuses.push(act.status);
-          logText = `[특이사항] '${act.status}' 상태 추가`;
+          const idx = simPlayer.statuses.findIndex(s => s.name === act.name);
+          if (idx !== -1) simPlayer.statuses[idx].desc = act.desc;
+          else simPlayer.statuses.push({ name: act.name, desc: act.desc });
+          logText = `[특이사항] '${act.name}' 상태 추가 (${act.desc})`;
         } else if (act.type === 'del_status') {
           const removed = simPlayer.statuses[act.idx];
           if (removed) {
             simPlayer.statuses.splice(act.idx, 1);
-            logText = `[특이사항] '${removed}' 상태 해제`;
+            logText = `[특이사항] '${removed.name}' 상태 해제`;
           }
         } else if (act.type === 'add_skill') {
           if (simPlayer.skills.length < MAX_SKILL_SLOTS) simPlayer.skills.push(deepClone(act.skill));
@@ -1567,14 +1567,17 @@
       if (params.get('loc')) turnData.loc = cleanStr(params.get('loc'));
       if (params.get('routes')) turnData.routes = params.get('routes').split(',').map(cleanStr).filter(Boolean);
 
-      // 같은 페르소나·슬롯에서 새 채팅(turn=1) 시작 시 이전 채팅(turn > 1) 잔여 데이터 자동 초기화
+      // 새 채팅(turn=1) 시작 시 이전 채팅 잔여 데이터 자동 초기화
       if (turnData.turn === 1 && (Number(player.lastSyncedTurn) || 0) > 1) {
         player = deepClone(DEFAULT_PLAYER);
         incomingAlert = '🆕 새 모험(T1)이 시작되어 상태창이 초기화되었습니다.';
       }
 
-      if (PERSONA_NS !== 'default' && !player.customName) {
-        player.name = PERSONA_NS;
+      const incomingUser = cleanStr(params.get('user') || params.get('name'));
+      if (incomingUser && incomingUser !== '{user}' && incomingUser !== '{{user}}') {
+        if (!player.customName) {
+          player.name = incomingUser;
+        }
       }
 
       const offerRaw = params.get('offer');
@@ -1628,10 +1631,21 @@
           });
         }
 
+        // 특이사항 동기화 (이름:효과 또는 이름 단독 지원)
         const statusRaw = params.get('status');
         if (statusRaw) {
-          if (statusRaw === 'none' || statusRaw === 'null') player.statuses = [];
-          else player.statuses = statusRaw.split(',').map(cleanStr).filter(Boolean);
+          if (statusRaw === 'none' || statusRaw === 'null') {
+            player.statuses = [];
+          } else {
+            player.statuses = statusRaw.split(',').map(entry => {
+              const parts = entry.split(':').map(cleanStr);
+              if (!parts[0]) return null;
+              return {
+                name: parts[0],
+                desc: parts.slice(1).join(':') || '적용 중인 특수 효과'
+              };
+            }).filter(Boolean);
+          }
         }
 
         const equipRaw = params.get('equip');
@@ -1886,7 +1900,6 @@
 
     function toggleDrawer(name) {
       activeDrawer = activeDrawer === name ? null : name;
-      pendingResetConfirm = false;
       render();
       if (activeDrawer === 'stats') {
         const { simPlayer } = getSimulatedState();
@@ -1920,45 +1933,29 @@
     }
 
     function queueAddStatus() {
-      const inp = document.getElementById('inputNewStatus');
-      const val = inp.value.trim();
-      if (!val) return;
-      inp.value = '';
-      pushAction({ type: 'add_status', status: val });
+      const nameInp = document.getElementById('inputNewStatusName');
+      const descInp = document.getElementById('inputNewStatusDesc');
+      const name = nameInp.value.trim();
+      const desc = descInp.value.trim();
+      if (!name) return;
+      nameInp.value = '';
+      descInp.value = '';
+      pushAction({
+        type: 'add_status',
+        name,
+        desc: desc || '적용 중인 특수 효과'
+      });
     }
 
     function queueRemoveStatus(idx) {
       pushAction({ type: 'del_status', idx });
     }
 
-    function switchSaveSlot(slotNum) {
-      if (activeSlot === slotNum) return;
-      activeSlot = slotNum;
-      actionQueue = [];
-      pendingResetConfirm = false;
-      pendingVariableSkillId = null;
-      player = loadPlayer(activeSlot);
-      if (PERSONA_NS !== 'default' && !player.customName) {
-        player.name = PERSONA_NS;
-      }
-      savePlayer();
-      render();
-      showNotice(`💾 [${PERSONA_NS === 'default' ? '기본' : PERSONA_NS}] 슬롯 ${slotNum}번으로 전환했습니다.`);
-    }
-
-    function handleResetSlot() {
-      if (!pendingResetConfirm) {
-        pendingResetConfirm = true;
-        render();
-        return;
-      }
-      pendingResetConfirm = false;
-      actionQueue = [];
-      pendingVariableSkillId = null;
-      player = deepClone(DEFAULT_PLAYER);
-      savePlayer();
-      render();
-      showNotice(`🔄 [${PERSONA_NS === 'default' ? '기본' : PERSONA_NS}] 슬롯 ${activeSlot}번이 초기 상태로 리셋되었습니다.`);
+    function inspectStatus(idx) {
+      const { simPlayer } = getSimulatedState();
+      const st = simPlayer.statuses[idx];
+      if (!st) return;
+      showNotice(`✨ [${st.name}] ${st.desc}`);
     }
 
     function renderAddSkillSubFields() {
@@ -2469,33 +2466,19 @@
         `;
       }).join('');
 
-      const statusBox = document.getElementById('drawerStatusBadges');
+      const statusListEl = document.getElementById('drawerStatusList');
       if (simPlayer.statuses && simPlayer.statuses.length > 0) {
-        statusBox.innerHTML = simPlayer.statuses.map((st, idx) => `
-          <span class="condition-badge">
-            ${escapeHtml(st)}
-            <span style="cursor:pointer; color:#fca5a5; font-weight:800;" onclick="queueRemoveStatus(${idx})">×</span>
-          </span>
+        statusListEl.innerHTML = simPlayer.statuses.map((st, idx) => `
+          <div class="status-detail-card">
+            <div>
+              <div class="status-detail-name">✨ ${escapeHtml(st.name)}</div>
+              <div class="status-detail-desc">${escapeHtml(st.desc)}</div>
+            </div>
+            <button class="mini-btn danger" style="padding:3px 7px;" onclick="queueRemoveStatus(${idx})">해제</button>
+          </div>
         `).join('');
       } else {
-        statusBox.innerHTML = `<span style="font-size:11px; color:#64748b;">적용 중인 특이사항 없음</span>`;
-      }
-
-      const profileTag = document.getElementById('personaProfileTag');
-      if (profileTag) {
-        const label = PERSONA_NS === 'default' ? '기본' : PERSONA_NS;
-        profileTag.textContent = `프로필: ${label} · 슬롯 ${activeSlot}`;
-      }
-
-      [1, 2, 3].forEach(n => {
-        const btn = document.getElementById(`slotBtn${n}`);
-        if (btn) btn.className = 'mini-btn' + (activeSlot === n ? ' primary' : '');
-      });
-
-      const resetBtn = document.getElementById('btnResetSlot');
-      if (resetBtn) {
-        resetBtn.className = 'mini-btn ' + (pendingResetConfirm ? 'warn' : 'danger');
-        resetBtn.textContent = pendingResetConfirm ? '확인' : '초기화';
+        statusListEl.innerHTML = `<span style="font-size:11px; color:#64748b;">적용 중인 특이사항 없음</span>`;
       }
     }
 
@@ -2557,7 +2540,7 @@
       if (simPlayer.statuses && simPlayer.statuses.length > 0) {
         condRow.style.display = 'flex';
         condList.innerHTML = simPlayer.statuses
-          .map(st => `<span class="condition-badge">${escapeHtml(st)}</span>`)
+          .map((st, idx) => `<span class="condition-badge" onclick="inspectStatus(${idx})" title="${escapeHtml(st.desc)}">${escapeHtml(st.name)}</span>`)
           .join('');
       } else {
         condRow.style.display = 'none';
