@@ -207,13 +207,19 @@
       box-shadow: 0 0 10px rgba(79, 70, 229, 0.35);
     }
 
-    /* 위치 · 골드 슬림 바 */
+    /* 날짜 · 시간 · 위치 · 골드 슬림 바 */
     .sub-status-bar {
       background: #191d2b;
       border: 1px solid #272e45;
       border-radius: 8px;
       padding: 7px 10px;
       margin-top: 8px;
+    }
+    .sub-date-row {
+      font-size: 11px;
+      color: #94a3b8;
+      font-weight: 700;
+      margin-bottom: 3px;
     }
     .sub-meta-row {
       display: flex;
@@ -897,8 +903,9 @@
       </div>
     </div>
 
-    <!-- 위치 · 턴 · 재화 바 -->
+    <!-- 연월일시 · 위치 · 턴 · 재화 바 -->
     <div class="sub-status-bar">
+      <div class="sub-date-row" id="metaDateTime">📅 2026년 4월 6일 월요일 · 14:00</div>
       <div class="sub-meta-row">
         <span style="color:#e2e8f0;" id="metaLoc">📍 시작의 광장 · T1</span>
         <span style="color:#fbbf24;" id="metaGold">💰 100G</span>
@@ -1186,8 +1193,10 @@
 
     let turnData = {
       turn: 1,
+      date: '2026년 4월 6일 월요일',
+      time: '14:00',
       loc: '시작의 광장',
-      routes: ['블루점프 길드', '스콘 상단', '왕국 정문', '남부 초원'],
+      routes: ['리레볼루션 거점', '야외 훈련장', '모험가 거리', '남부 초원'],
       offer: null,
       enemy: null,
       reward: null
@@ -1514,6 +1523,8 @@
     function parseIncomingData() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('turn')) turnData.turn = parseInt(params.get('turn'), 10) || 1;
+      if (params.get('date')) turnData.date = cleanStr(params.get('date'));
+      if (params.get('time')) turnData.time = cleanStr(params.get('time'));
       if (params.get('loc')) turnData.loc = cleanStr(params.get('loc'));
       if (params.get('routes')) turnData.routes = params.get('routes').split(',').map(cleanStr).filter(Boolean);
 
@@ -2436,6 +2447,7 @@
         condList.innerHTML = '';
       }
 
+      document.getElementById('metaDateTime').textContent = `📅 ${turnData.date} · ${turnData.time}`;
       document.getElementById('metaLoc').textContent = `📍 ${turnData.loc} · T${turnData.turn}`;
       document.getElementById('metaGold').textContent = `💰 ${simPlayer.gold}G`;
 
