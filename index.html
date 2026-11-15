@@ -207,7 +207,7 @@
       box-shadow: 0 0 10px rgba(79, 70, 229, 0.35);
     }
 
-    /* 날짜 · 시간 · 위치 · 골드 슬림 바 */
+    /* 연월일시 · 위치 · 골드 슬림 바 */
     .sub-status-bar {
       background: #191d2b;
       border: 1px solid #272e45;
@@ -938,24 +938,25 @@
         </div>
       </div>
 
-      <!-- 상시 노출 자율 입력칸: 신규 아이템 직접 습득 -->
+      <!-- 상시 노출 자율 입력칸: 신규 아이템 직접 습득 (무기/방어구/장신구/회복/기타 및 특수) -->
       <div class="creation-card">
         <div class="creation-title">
           <span>📦 [자율 습득] 신규 아이템 등록</span>
-          <span class="creation-hint">이름만 입력해도 바로 등록</span>
+          <span class="creation-hint">분류 선택 후 즉시 등록</span>
         </div>
         <div class="input-inline">
-          <input id="newItemName" class="highlight-input" placeholder="습득한 아이템 이름 (예: 강철 검, 회복약)" />
-          <select id="newItemCat" style="width:82px; flex-shrink:0;" onchange="renderAddItemSubFields()">
-            <option value="consumable">소비</option>
+          <input id="newItemName" class="highlight-input" placeholder="습득한 아이템 이름 입력" />
+          <select id="newItemCat" style="width:112px; flex-shrink:0;" onchange="renderAddItemSubFields()">
             <option value="weapon">무기</option>
             <option value="armor">방어구</option>
-            <option value="misc">기타</option>
+            <option value="acc">장신구</option>
+            <option value="consumable">회복</option>
+            <option value="misc">기타 및 특수</option>
           </select>
           <button class="mini-btn primary" onclick="queueNewItem()">습득</button>
         </div>
         <div id="newItemSubFields" class="input-inline"></div>
-        <input id="newItemDesc" placeholder="한 줄 설명 입력 (생략 시 자동 생성)" />
+        <input id="newItemDesc" placeholder="한 줄 설명 입력 (회복 대상 HP/MP, 장비 효과 등 자유 기입)" />
       </div>
 
       <!-- 소지품 목록 (최대 10칸) -->
@@ -1158,7 +1159,6 @@
         {
           cat: 'consumable',
           name: '응급 회복약',
-          effectType: 'hp',
           val: 30,
           qty: 2,
           desc: '마시면 HP를 30 즉시 회복하는 약초즙'
@@ -1332,6 +1332,19 @@
       return (Number(p.maxMp) || 50) + statBonus;
     }
 
+    // 회복 아이템 설명문 기반 HP/MP 판별
+    function detectHealTarget(item) {
+      if (item.effectType === 'mp') return 'mp';
+      if (item.effectType === 'both') return 'both';
+      if (item.effectType === 'hp') return 'hp';
+      const txt = `${item.name || ''} ${item.desc || ''}`.toUpperCase();
+      const hasMp = txt.includes('MP') || txt.includes('마나') || txt.includes('마력');
+      const hasHp = txt.includes('HP') || txt.includes('체력') || txt.includes('생명');
+      if (hasHp && hasMp) return 'both';
+      if (hasMp) return 'mp';
+      return 'hp';
+    }
+
     // 대기열 시뮬레이션
     function getSimulatedState() {
       const simPlayer = deepClone(player);
@@ -1386,15 +1399,19 @@
           }
         } else if (act.type === 'equip_from_inven') {
           const item = simPlayer.inventory[act.idx];
-          if (item && (item.cat === 'weapon' || item.cat === 'armor')) {
+          if (item && (item.cat === 'weapon' || item.cat === 'armor' || item.cat === 'acc')) {
             const slotKey = item.cat;
             const prev = simPlayer.equipment[slotKey];
             if (slotKey === 'weapon') {
               simPlayer.equipment.weapon = { name: item.name, statType: item.statType || '공격력', val: Number(item.val) || 0, desc: item.desc || '' };
               logText = `[장비] 무기 '${item.name}' 장착 (${simPlayer.equipment.weapon.statType} +${simPlayer.equipment.weapon.val})`;
-            } else {
+            } else if (slotKey === 'armor') {
               simPlayer.equipment.armor = { name: item.name, hp: Number(item.hp) || 0, def: Number(item.def) || 0, desc: item.desc || '' };
               logText = `[장비] 방어구 '${item.name}' 장착 (HP +${simPlayer.equipment.armor.hp}, 방어력 +${simPlayer.equipment.armor.def})`;
+            } else {
+              const eff = item.effect || item.desc || '특수 효과';
+              simPlayer.equipment.acc = { name: item.name, effect: eff };
+              logText = `[장비] 장신구 '${item.name}' 장착 (${eff})`;
             }
             if (prev) simPlayer.inventory[act.idx] = { cat: slotKey, ...prev };
             else simPlayer.inventory.splice(act.idx, 1);
@@ -1404,8 +1421,8 @@
         } else if (act.type === 'unequip') {
           const item = simPlayer.equipment[act.slotKey];
           if (item) {
-            if ((act.slotKey === 'weapon' || act.slotKey === 'armor') && simPlayer.inventory.length < MAX_INVEN_SLOTS) {
-              simPlayer.inventory.push({ cat: act.slotKey, ...item });
+            if ((act.slotKey === 'weapon' || act.slotKey === 'armor' || act.slotKey === 'acc') && simPlayer.inventory.length < MAX_INVEN_SLOTS) {
+              simPlayer.inventory.push({ cat: act.slotKey, ...item, desc: item.desc || item.effect || '' });
             }
             simPlayer.equipment[act.slotKey] = null;
             const effMaxHp = calcMaxHp(simPlayer);
@@ -1423,20 +1440,25 @@
             const effMaxHp = calcMaxHp(simPlayer);
             const effMaxMp = calcMaxMp(simPlayer);
             const val = Number(item.val) || 0;
+            const target = detectHealTarget(item);
             let effText = '';
-            if (item.effectType === 'hp') {
-              simPlayer.hp = Math.min(effMaxHp, simPlayer.hp + val);
-              effText = `HP +${val} 회복 (예상 HP ${simPlayer.hp}/${effMaxHp})`;
-            } else if (item.effectType === 'mp') {
-              simPlayer.mp = Math.min(effMaxMp, simPlayer.mp + val);
-              effText = `MP +${val} 회복 (예상 MP ${simPlayer.mp}/${effMaxMp})`;
-            } else if (item.effectType === 'both') {
-              simPlayer.hp = Math.min(effMaxHp, simPlayer.hp + val);
-              simPlayer.mp = Math.min(effMaxMp, simPlayer.mp + val);
-              effText = `HP/MP +${val} 회복 (예상 HP ${simPlayer.hp}/${effMaxHp}, MP ${simPlayer.mp}/${effMaxMp})`;
+
+            if (val > 0) {
+              if (target === 'mp') {
+                simPlayer.mp = Math.min(effMaxMp, simPlayer.mp + val);
+                effText = `MP +${val} 회복 (예상 MP ${simPlayer.mp}/${effMaxMp})`;
+              } else if (target === 'both') {
+                simPlayer.hp = Math.min(effMaxHp, simPlayer.hp + val);
+                simPlayer.mp = Math.min(effMaxMp, simPlayer.mp + val);
+                effText = `HP/MP +${val} 회복 (예상 HP ${simPlayer.hp}/${effMaxHp}, MP ${simPlayer.mp}/${effMaxMp})`;
+              } else {
+                simPlayer.hp = Math.min(effMaxHp, simPlayer.hp + val);
+                effText = `HP +${val} 회복 (예상 HP ${simPlayer.hp}/${effMaxHp})`;
+              }
             } else {
-              effText = item.desc || '효과 발동';
+              effText = item.desc || '회복 효과 발동';
             }
+
             if ((item.qty || 1) > 1) item.qty -= 1;
             else simPlayer.inventory.splice(act.idx, 1);
             logText = `[아이템] '${item.name}' 사용 → ${effText}`;
@@ -1457,12 +1479,12 @@
             simPlayer.inventory.push(newItem);
           }
           const qtyStr = (newItem.qty && newItem.qty > 1) ? ` ×${newItem.qty}` : '';
-          let specStr = '기타';
+          let specStr = '기타 및 특수';
           if (newItem.cat === 'weapon') specStr = `무기 | ${newItem.statType} +${newItem.val}`;
           else if (newItem.cat === 'armor') specStr = `방어구 | HP +${newItem.hp}, 방어 +${newItem.def}`;
+          else if (newItem.cat === 'acc') specStr = `장신구`;
           else if (newItem.cat === 'consumable') {
-            const m = { hp: `HP +${newItem.val}`, mp: `MP +${newItem.val}`, both: `HP/MP +${newItem.val}`, none: '특수효과' };
-            specStr = `소비 | ${m[newItem.effectType] || '소비'}`;
+            specStr = Number(newItem.val) > 0 ? `회복 +${newItem.val}` : `회복`;
           }
           logText = `[아이템 습득] '${newItem.name}${qtyStr}' (${specStr} | ${newItem.desc})`;
         } else if (act.type === 'gold') {
@@ -1609,12 +1631,13 @@
           });
         }
 
+        // 인벤토리 동기화 (신규 5분류: 무기/방어구/장신구/회복/기타 및 기존 호환)
         const invenRaw = params.get('inven');
         if (invenRaw && invenRaw !== 'none' && invenRaw !== 'null') {
           invenRaw.split(',').forEach(entry => {
             const op = entry[0];
             const parts = entry.slice(1).split(':').map(cleanStr);
-            const catMap = { '소비': 'consumable', '무기': 'weapon', '방어구': 'armor', '기타': 'misc' };
+            const catMap = { '소비': 'consumable', '회복': 'consumable', '무기': 'weapon', '방어구': 'armor', '장신구': 'acc', '기타': 'misc', '기타 및 특수': 'misc' };
             const cat = catMap[parts[0]] || 'misc';
             const name = parts[1];
             if (!name) return;
@@ -1632,10 +1655,12 @@
               }
             } else if (op === '+') {
               if (cat === 'consumable') {
-                const effectType = parts[2] || 'hp';
-                const val = parseInt(parts[3], 10) || 0;
-                const qty = parseInt(parts[4], 10) || 1;
-                const desc = parts[5] || `사용 시 ${effectType.toUpperCase()} +${val}`;
+                // +회복:이름:회복량:수량:설명 또는 구버전 +소비:이름:hp:30:2:설명 모두 지원
+                const isLegacy = ['hp', 'mp', 'both', 'none'].includes((parts[2] || '').toLowerCase());
+                const effectType = isLegacy ? parts[2].toLowerCase() : undefined;
+                const val = parseInt(isLegacy ? parts[3] : parts[2], 10) || 0;
+                const qty = parseInt(isLegacy ? parts[4] : parts[3], 10) || 1;
+                const desc = (isLegacy ? parts[5] : parts[4]) || (val > 0 ? `사용 시 ${val} 회복` : '회복 아이템');
                 const ex = player.inventory.find(it => it.cat === 'consumable' && it.name === name);
                 if (ex) ex.qty = (ex.qty || 1) + qty;
                 else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push({ cat, name, effectType, val, qty, desc });
@@ -1647,9 +1672,14 @@
                 if (player.inventory.length < MAX_INVEN_SLOTS) {
                   player.inventory.push({ cat, name, hp: parseInt(parts[2], 10) || 0, def: parseInt(parts[3], 10) || 0, desc: parts[4] || '' });
                 }
+              } else if (cat === 'acc') {
+                if (player.inventory.length < MAX_INVEN_SLOTS) {
+                  const desc = parts[2] || '장착 가능한 장신구';
+                  player.inventory.push({ cat, name, effect: desc, desc });
+                }
               } else {
                 const qty = parseInt(parts[2], 10) || 1;
-                const desc = parts[3] || '소지 중인 기타 물품';
+                const desc = parts[3] || '소지 중인 기타 · 특수 물품';
                 const ex = player.inventory.find(it => it.cat === 'misc' && it.name === name);
                 if (ex) ex.qty = (ex.qty || 1) + qty;
                 else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push({ cat: 'misc', name, qty, desc });
@@ -1872,10 +1902,12 @@
       }
     }
 
+    // 5대 아이템 분류(무기 / 방어구 / 장신구 / 회복 / 기타 및 특수)에 맞춘 간편 입력칸
     function renderAddItemSubFields() {
       const cat = document.getElementById('newItemCat').value;
       const box = document.getElementById('newItemSubFields');
       if (cat === 'weapon') {
+        box.style.display = 'flex';
         box.innerHTML = `
           <select id="newWeaponType" style="width:92px; flex-shrink:0;">
             <option value="공격력">공격력</option>
@@ -1884,22 +1916,22 @@
           <input type="number" id="newWeaponVal" placeholder="추가 수치 (+n)" min="0" />
         `;
       } else if (cat === 'armor') {
+        box.style.display = 'flex';
         box.innerHTML = `
           <input type="number" id="newArmorHp" placeholder="HP (+n)" min="0" />
           <input type="number" id="newArmorDef" placeholder="방어력 (+n)" min="0" />
         `;
+      } else if (cat === 'acc') {
+        box.style.display = 'none';
+        box.innerHTML = '';
       } else if (cat === 'consumable') {
+        box.style.display = 'flex';
         box.innerHTML = `
-          <select id="newConsType" style="width:105px; flex-shrink:0;">
-            <option value="hp">HP 회복</option>
-            <option value="mp">MP 회복</option>
-            <option value="both">HP/MP 회복</option>
-            <option value="none">특수/기타효과</option>
-          </select>
-          <input type="number" id="newConsVal" placeholder="회복량" min="0" />
-          <input type="number" id="newConsQty" placeholder="수량" value="1" min="1" style="width:62px; flex-shrink:0;" />
+          <input type="number" id="newConsVal" placeholder="회복량 (숫자)" min="0" />
+          <input type="number" id="newConsQty" placeholder="수량 (기본 1)" value="1" min="1" style="width:95px; flex-shrink:0;" />
         `;
       } else {
+        box.style.display = 'flex';
         box.innerHTML = `
           <input type="number" id="newMiscQty" placeholder="수량 (기본 1)" value="1" min="1" />
         `;
@@ -1923,18 +1955,16 @@
           return;
         }
         if (cat === 'consumable') {
-          const effectType = document.getElementById('newConsType').value;
           const val = Math.max(0, parseInt(document.getElementById('newConsVal').value, 10) || 0);
           itemObj = {
             cat: 'consumable',
             name,
-            effectType,
             val,
             qty: addQty,
-            desc: desc || (effectType === 'none' ? '사용 가능한 소비 아이템' : `사용 시 ${effectType.toUpperCase()} +${val} 회복`)
+            desc: desc || (val > 0 ? `사용 시 ${val} 회복` : '사용 가능한 회복 아이템')
           };
         } else {
-          itemObj = { cat: 'misc', name, qty: addQty, desc: desc || '소지 중인 기타 물품' };
+          itemObj = { cat: 'misc', name, qty: addQty, desc: desc || '소지 중인 기타 · 특수 물품' };
         }
       } else {
         if (simPlayer.inventory.length >= MAX_INVEN_SLOTS) {
@@ -1945,10 +1975,13 @@
           const statType = document.getElementById('newWeaponType').value;
           const val = Math.max(0, parseInt(document.getElementById('newWeaponVal').value, 10) || 0);
           itemObj = { cat: 'weapon', name, statType, val, desc: desc || `${statType} +${val} 무기` };
-        } else {
+        } else if (cat === 'armor') {
           const hp = Math.max(0, parseInt(document.getElementById('newArmorHp').value, 10) || 0);
           const def = Math.max(0, parseInt(document.getElementById('newArmorDef').value, 10) || 0);
           itemObj = { cat: 'armor', name, hp, def, desc: desc || `HP +${hp}, 방어력 +${def} 방어구` };
+        } else {
+          const finalDesc = desc || '장착 가능한 장신구';
+          itemObj = { cat: 'acc', name, effect: finalDesc, desc: finalDesc };
         }
       }
 
@@ -2040,7 +2073,7 @@
 
     function queueUnequipSlot(slotKey) {
       const { simPlayer } = getSimulatedState();
-      if ((slotKey === 'weapon' || slotKey === 'armor') && simPlayer.inventory.length >= MAX_INVEN_SLOTS) {
+      if ((slotKey === 'weapon' || slotKey === 'armor' || slotKey === 'acc') && simPlayer.inventory.length >= MAX_INVEN_SLOTS) {
         showNotice('⚠️ 인벤토리(10/10칸)가 가득 차서 해제할 수 없습니다.');
         return;
       }
@@ -2259,12 +2292,15 @@
           if (Number(item.def) > 0) parts.push(`방어 +${Number(item.def)}`);
           badgeHtml = `<span class="stat-pill">${parts.length ? parts.join(' · ') : '방어 +0'}</span>`;
           actionBtnHtml = `<button class="mini-btn primary" onclick="queueEquipFromInven(${idx})">장착</button>`;
+        } else if (item.cat === 'acc') {
+          badgeHtml = `<span class="stat-pill purple">장신구</span>`;
+          actionBtnHtml = `<button class="mini-btn primary" onclick="queueEquipFromInven(${idx})">장착</button>`;
         } else if (item.cat === 'consumable') {
-          const effMap = { hp: `HP +${item.val}`, mp: `MP +${item.val}`, both: `HP/MP +${item.val}`, none: '소비' };
-          badgeHtml = `<span class="stat-pill green">${effMap[item.effectType] || '소비'}</span>`;
+          const healLabel = Number(item.val) > 0 ? `회복 +${Number(item.val)}` : '회복';
+          badgeHtml = `<span class="stat-pill green">${healLabel}</span>`;
           actionBtnHtml = `<button class="mini-btn success" onclick="queueUseInvenItem(${idx})">사용</button>`;
         } else {
-          badgeHtml = `<span class="stat-pill gray">기타</span>`;
+          badgeHtml = `<span class="stat-pill gray">기타 및 특수</span>`;
         }
 
         const qtyText = (item.cat === 'consumable' || item.cat === 'misc') && (item.qty || 1) > 1
