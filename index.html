@@ -3,56 +3,1072 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>에테리아 모바일 RPG 엔진</title>
+  <title>모바일 RPG 상태창 패널</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif; }
-    body { background: #11131c; color: #e2e8f0; padding: 10px; font-size: 13px; }
-    .panel { background: #181b28; border: 1px solid #2d3348; border-radius: 10px; padding: 12px; max-width: 540px; margin: 0 auto; }
-    .top-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid #2a3045; }
-    .stat-line { font-size: 12px; font-weight: 600; }
-    .nav-btns { display: flex; gap: 4px; }
-    button { background: #262b3e; color: #f1f5f9; border: 1px solid #38405c; border-radius: 6px; padding: 8px 10px; font-size: 12px; font-weight: 600; cursor: pointer; text-align: left; }
-    button:active { transform: scale(0.98); }
-    button:disabled { background: #1a1d29; color: #525a75; border-color: #242838; cursor: not-allowed; }
-    button.active { background: #4f46e5; border-color: #6366f1; }
-    .drawer { background: #121520; border: 1px solid #2a3045; border-radius: 8px; padding: 8px; margin-top: 8px; display: none; flex-direction: column; gap: 6px; }
-    .drawer.open { display: flex; }
-    .section-title { font-size: 11px; color: #94a3b8; margin-top: 10px; margin-bottom: 4px; font-weight: bold; }
-    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
-    .flex-col { display: flex; flex-direction: column; gap: 5px; }
-    .flex-wrap { display: flex; flex-wrap: wrap; gap: 5px; }
-    .offer-box { background: #1e293b; border: 1px solid #d97706; border-radius: 8px; padding: 8px; margin-top: 8px; }
-    .enemy-box { background: #2c151b; border: 1px solid #e11d48; border-radius: 8px; padding: 7px 9px; margin-top: 8px; display: flex; justify-content: space-between; font-weight: bold; color: #fda4af; }
-    .btn-atk { background: #7f1d1d; border-color: #991b1b; }
-    .btn-heal { background: #115e59; border-color: #0f766e; }
-    .btn-move { background: #1e3a8a; border-color: #1d4ed8; }
-    .btn-yes { background: #065f46; border-color: #059669; text-align: center; }
-    .btn-no { background: #7f1d1d; border-color: #dc2626; text-align: center; }
-    input, select { background: #1e2233; color: #fff; border: 1px solid #3b425e; border-radius: 4px; padding: 6px 8px; font-size: 12px; }
-    .toast { margin-top: 10px; padding: 9px; background: #0c4a6e; border: 1px solid #38bdf8; border-radius: 6px; color: #e0f2fe; font-size: 12px; font-weight: bold; display: none; }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background: #0f111a;
+      color: #e2e8f0;
+      padding: 8px 10px 18px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .panel {
+      background: #171a26;
+      border: 1px solid #293045;
+      border-radius: 12px;
+      padding: 0 12px 12px;
+      max-width: 520px;
+      margin: 0 auto;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+
+    /* 1. 최상단 고정 헤더 (유저 이름 + HP/MP/EXP + 특이사항 + 5대 탭) */
+    .sticky-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: #171a26;
+      padding-top: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #262d42;
+    }
+    .identity-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: #1c2030;
+      border: 1px solid #2c344d;
+      border-radius: 9px;
+      padding: 7px 9px;
+      margin-bottom: 7px;
+    }
+    .identity-top-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .user-name-box {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 72px;
+      max-width: 102px;
+      flex-shrink: 0;
+      cursor: pointer;
+      padding: 3px 6px;
+      border-radius: 6px;
+      background: #24293d;
+      border: 1px solid #343c59;
+    }
+    .user-name-box:active {
+      background: #2d344d;
+    }
+    .user-name-text {
+      font-size: 12px;
+      font-weight: 800;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .edit-icon {
+      font-size: 10px;
+      color: #94a3b8;
+      flex-shrink: 0;
+    }
+
+    /* 우측 고정 3대 게이지 (HP / MP / EXP) */
+    .vital-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      flex: 1;
+      min-width: 0;
+    }
+    .vital-item {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      min-width: 0;
+    }
+    .vital-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .vital-num {
+      color: #e2e8f0;
+      font-size: 10px;
+    }
+    .vital-track {
+      width: 100%;
+      height: 6px;
+      background: #0e111a;
+      border-radius: 999px;
+      overflow: hidden;
+      border: 1px solid #262d42;
+    }
+    .fill-hp {
+      height: 100%;
+      background: linear-gradient(90deg, #ef4444, #dc2626);
+      transition: width 0.2s ease;
+    }
+    .fill-mp {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #2563eb);
+      transition: width 0.2s ease;
+    }
+    .fill-exp {
+      height: 100%;
+      background: linear-gradient(90deg, #f59e0b, #eab308);
+      transition: width 0.2s ease;
+    }
+
+    /* 상단 고정 특이사항 영역 */
+    .condition-row {
+      padding-top: 5px;
+      border-top: 1px dashed #2e3650;
+      display: none;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 4px;
+      font-size: 10px;
+    }
+    .condition-title {
+      color: #fbbf24;
+      font-weight: 800;
+      margin-right: 2px;
+      white-space: nowrap;
+    }
+    .condition-badge {
+      background: rgba(251, 191, 36, 0.14);
+      border: 1px solid rgba(251, 191, 36, 0.42);
+      color: #fde68a;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* 이름 인라인 수정창 */
+    .name-edit-bar {
+      display: none;
+      gap: 5px;
+      margin-bottom: 7px;
+      background: #121520;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid #4f46e5;
+    }
+    .name-edit-bar.open {
+      display: flex;
+    }
+
+    /* 5개 메인 탭 버튼 (장비 / 인벤 / 스킬 / 수련 / 스텟) */
+    .top-nav {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 4px;
+    }
+    .nav-btn {
+      background: #212638;
+      color: #cbd5e1;
+      border: 1px solid #323a54;
+      border-radius: 8px;
+      padding: 8px 2px;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .nav-btn:active {
+      transform: scale(0.97);
+    }
+    .nav-btn.active {
+      background: #4f46e5;
+      color: #ffffff;
+      border-color: #6366f1;
+      box-shadow: 0 0 10px rgba(79, 70, 229, 0.35);
+    }
+
+    /* 위치 · 골드 슬림 바 */
+    .sub-status-bar {
+      background: #191d2b;
+      border: 1px solid #272e45;
+      border-radius: 8px;
+      padding: 7px 10px;
+      margin-top: 8px;
+    }
+    .sub-meta-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    /* 접이식 패널 (드로어) */
+    .drawer {
+      background: #121520;
+      border: 1px solid #2d354f;
+      border-radius: 10px;
+      padding: 10px;
+      margin-top: 8px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .drawer.open {
+      display: flex;
+    }
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #a5b4fc;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #23293d;
+    }
+
+    /* 상시 노출 자율 입력 카드 (백지 상태창 / 아이템 습득) */
+    .creation-card {
+      background: #161b2c;
+      border: 1px solid #4338ca;
+      border-radius: 8px;
+      padding: 8px 9px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .creation-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #c7d2fe;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .creation-hint {
+      font-size: 10px;
+      color: #818cf8;
+      font-weight: 600;
+    }
+    .highlight-input {
+      border-color: #d97706 !important;
+      background: #1b2033 !important;
+    }
+    .highlight-input:focus {
+      border-color: #f59e0b !important;
+    }
+
+    /* 장비 아코디언 카드 */
+    .equip-card {
+      background: #191d2b;
+      border: 1px solid #272e45;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .equip-card.expanded {
+      border-color: #4f46e5;
+    }
+    .equip-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .equip-header:active {
+      background: #202536;
+    }
+    .slot-label {
+      color: #94a3b8;
+      font-weight: 700;
+    }
+    .slot-value {
+      color: #f1f5f9;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .slot-empty {
+      color: #64748b;
+      font-weight: 500;
+    }
+    .equip-detail {
+      display: none;
+      padding: 9px 10px;
+      background: #131622;
+      border-top: 1px solid #252b40;
+      font-size: 12px;
+      flex-direction: column;
+      gap: 7px;
+    }
+    .equip-card.expanded .equip-detail {
+      display: flex;
+    }
+
+    /* 수련 탭 전용 스타일 */
+    .train-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    .train-btn {
+      background: #191d2b;
+      border: 1px solid #2f3854;
+      border-radius: 8px;
+      padding: 9px 10px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #f1f5f9;
+      text-align: left;
+      transition: border-color 0.15s ease, transform 0.1s ease;
+    }
+    .train-btn:active {
+      transform: scale(0.97);
+      border-color: #6366f1;
+    }
+    .train-btn-name {
+      font-size: 12px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .train-btn-stat {
+      font-size: 10px;
+      font-weight: 700;
+      color: #a5b4fc;
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.35);
+      padding: 2px 6px;
+      border-radius: 5px;
+    }
+
+    /* 스텟 탭 전용 스타일 */
+    .combat-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+    }
+    .combat-stat-box {
+      background: #191d2b;
+      border: 1px solid #283047;
+      border-radius: 8px;
+      padding: 7px 6px;
+      text-align: center;
+    }
+    .combat-stat-label {
+      font-size: 10px;
+      color: #94a3b8;
+      font-weight: 700;
+    }
+    .combat-stat-val {
+      font-size: 14px;
+      font-weight: 800;
+      color: #f8fafc;
+      margin-top: 2px;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-row-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      background: #191d2b;
+      border: 1px solid #272e45;
+      border-radius: 8px;
+      padding: 7px 9px;
+    }
+    .stat-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .stat-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .stat-sub {
+      font-size: 10px;
+      color: #94a3b8;
+    }
+    .stat-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .stat-val-badge {
+      min-width: 26px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 800;
+      color: #a5b4fc;
+      font-variant-numeric: tabular-nums;
+    }
+    .sub-section-box {
+      background: #161a26;
+      border: 1px solid #262d42;
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sub-section-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #94a3b8;
+    }
+    .slot-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 5px;
+    }
+    .slot-btns {
+      display: flex;
+      gap: 4px;
+    }
+
+    /* 공통 배지(Pill) 스타일 */
+    .stat-pill {
+      display: inline-block;
+      background: rgba(99, 102, 241, 0.16);
+      border: 1px solid rgba(99, 102, 241, 0.4);
+      color: #c7d2fe;
+      padding: 2px 7px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 11px;
+    }
+    .stat-pill.red {
+      background: rgba(239, 68, 68, 0.16);
+      border-color: rgba(239, 68, 68, 0.45);
+      color: #fca5a5;
+    }
+    .stat-pill.purple {
+      background: rgba(168, 85, 247, 0.16);
+      border-color: rgba(168, 85, 247, 0.45);
+      color: #d8b4fe;
+    }
+    .stat-pill.amber {
+      background: rgba(245, 158, 11, 0.16);
+      border-color: rgba(245, 158, 11, 0.45);
+      color: #fcd34d;
+    }
+    .stat-pill.green {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #6ee7b7;
+    }
+    .stat-pill.gray {
+      background: rgba(148, 163, 184, 0.12);
+      border-color: rgba(148, 163, 184, 0.3);
+      color: #cbd5e1;
+    }
+
+    /* 인벤토리 & 스킬 카드 공통 스타일 */
+    .gold-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      background: #191d2b;
+      border: 1px solid #283047;
+      border-radius: 8px;
+      padding: 7px 9px;
+    }
+    .gold-amount {
+      font-weight: 800;
+      color: #fbbf24;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .gold-controls {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .gold-controls input {
+      width: 72px;
+      padding: 4px 6px;
+      text-align: right;
+      font-size: 12px;
+    }
+    .list-card {
+      background: #191d2b;
+      border: 1px solid #272e45;
+      border-radius: 8px;
+      padding: 8px 9px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .list-card-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+    }
+    .list-title-wrap {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #f1f5f9;
+    }
+    .list-effect {
+      font-size: 11px;
+      font-weight: 600;
+      color: #c7d2fe;
+      line-height: 1.35;
+    }
+    .list-desc {
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.35;
+    }
+    .list-btns {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    /* 가변 MP 스킬 발동 입력 박스 */
+    .mp-spend-box {
+      background: #151b2b;
+      border: 1px solid #3b82f6;
+      border-radius: 8px;
+      padding: 9px;
+      margin-top: 7px;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .mp-spend-box.open {
+      display: flex;
+    }
+    .mp-spend-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #93c5fd;
+    }
+    .mp-quick-row {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    /* 공통 입력 / 미니 버튼 */
+    .input-row {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .input-inline {
+      display: flex;
+      gap: 5px;
+    }
+    input, select {
+      background: #1c2133;
+      color: #f8fafc;
+      border: 1px solid #363f5c;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 12px;
+      width: 100%;
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #6366f1;
+    }
+    .mini-btn {
+      background: #2b324a;
+      color: #f1f5f9;
+      border: 1px solid #3f4869;
+      border-radius: 6px;
+      padding: 5px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+      text-align: center;
+    }
+    .mini-btn:active {
+      transform: scale(0.96);
+    }
+    .mini-btn:disabled {
+      background: #181b26;
+      color: #4b536e;
+      border-color: #222636;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .mini-btn.primary {
+      background: #4f46e5;
+      border-color: #6366f1;
+      color: #fff;
+    }
+    .mini-btn.success {
+      background: #065f46;
+      border-color: #059669;
+      color: #d1fae5;
+    }
+    .mini-btn.danger {
+      background: #7f1d1d;
+      border-color: #991b1b;
+      color: #fecaca;
+    }
+    .mini-btn.warn {
+      background: #b45309;
+      border-color: #d97706;
+      color: #fef3c7;
+    }
+
+    /* 하단 기본 행동 영역 */
+    .section-title {
+      font-size: 11px;
+      color: #94a3b8;
+      margin-top: 12px;
+      margin-bottom: 5px;
+      font-weight: 700;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .flex-col {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .flex-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    button.action-btn {
+      background: #23283b;
+      color: #f1f5f9;
+      border: 1px solid #353d59;
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+    }
+    button.action-btn:active {
+      transform: scale(0.98);
+    }
+    button.action-btn:disabled {
+      background: #181b26;
+      color: #4b536e;
+      border-color: #222636;
+      cursor: not-allowed;
+    }
+    /* 4대 스킬 분류별 버튼 컬러 */
+    .btn-phys { background: #7f1d1d !important; border-color: #991b1b !important; }
+    .btn-mag  { background: #4c1d95 !important; border-color: #6d28d9 !important; }
+    .btn-def  { background: #78350f !important; border-color: #b45309 !important; }
+    .btn-heal { background: #115e59 !important; border-color: #0f766e !important; }
+
+    .btn-move { background: #1e3a8a !important; border-color: #1d4ed8 !important; }
+    .btn-yes { background: #065f46 !important; border-color: #059669 !important; text-align: center !important; }
+    .btn-no { background: #7f1d1d !important; border-color: #dc2626 !important; text-align: center !important; }
+
+    .offer-box {
+      background: #1e293b;
+      border: 1px solid #d97706;
+      border-radius: 8px;
+      padding: 9px;
+      margin-top: 8px;
+    }
+    .enemy-box {
+      background: #2c151b;
+      border: 1px solid #e11d48;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-top: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      color: #fda4af;
+      font-size: 12px;
+    }
+
+    /* 2. 하단 누적 대기열 & 일괄 복사 박스 */
+    .queue-box {
+      margin-top: 14px;
+      background: #121624;
+      border: 1px solid #4f46e5;
+      border-radius: 10px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 4px 16px rgba(79, 70, 229, 0.18);
+    }
+    .queue-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 800;
+      color: #a5b4fc;
+    }
+    .queue-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .queue-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 6px;
+      background: #1a2033;
+      border: 1px solid #2c3552;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 11px;
+      color: #f1f5f9;
+      line-height: 1.35;
+    }
+    .queue-item-text {
+      flex: 1;
+      word-break: keep-all;
+    }
+    .queue-del-btn {
+      background: #3b1d26;
+      color: #fda4af;
+      border: 1px solid #7f1d1d;
+      border-radius: 4px;
+      padding: 1px 6px;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .queue-empty {
+      text-align: center;
+      font-size: 11px;
+      color: #64748b;
+      padding: 8px 0;
+    }
+    .queue-footer {
+      display: flex;
+      gap: 6px;
+    }
+    .btn-copy-all {
+      flex: 1;
+      background: linear-gradient(90deg, #4f46e5, #6366f1);
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      text-align: center;
+      box-shadow: 0 2px 10px rgba(79, 70, 229, 0.35);
+    }
+    .btn-copy-all:active {
+      transform: scale(0.98);
+    }
+    .btn-copy-all:disabled {
+      background: #23283b;
+      color: #64748b;
+      box-shadow: none;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .toast {
+      margin-top: 8px;
+      padding: 8px 10px;
+      background: #0c4a6e;
+      border: 1px solid #38bdf8;
+      border-radius: 8px;
+      color: #e0f2fe;
+      font-size: 11px;
+      font-weight: 700;
+      display: none;
+      line-height: 1.4;
+    }
   </style>
 </head>
 <body>
   <div class="panel">
-    <div class="top-bar">
-      <div class="stat-line" id="topStat">로딩 중...</div>
-      <div class="nav-btns">
-        <button id="btnToggleStatus" onclick="toggleDrawer('status')">상태창</button>
-        <button id="btnToggleTree" onclick="toggleDrawer('tree')">스킬트리</button>
+    <!-- 1. 최상단 고정 헤더 (좌측 유저 이름 + 우측 HP/MP/EXP + 특이사항 + 5대 메뉴) -->
+    <div class="sticky-header">
+      <div class="identity-bar">
+        <div class="identity-top-row">
+          <!-- 좌측 상단: 유저 이름 -->
+          <div class="user-name-box" onclick="toggleNameEdit()" title="터치하여 이름 변경">
+            <span class="user-name-text" id="displayUserName">모험가</span>
+            <span class="edit-icon">✎</span>
+          </div>
+
+          <!-- 우측 상단: HP(100/100), MP(50/50), EXP(0/100) 고정 -->
+          <div class="vital-grid">
+            <div class="vital-item">
+              <div class="vital-top">
+                <span style="color:#f87171;">HP</span>
+                <span class="vital-num" id="hpText">100/100</span>
+              </div>
+              <div class="vital-track">
+                <div class="fill-hp" id="hpBar" style="width:100%;"></div>
+              </div>
+            </div>
+
+            <div class="vital-item">
+              <div class="vital-top">
+                <span style="color:#60a5fa;">MP</span>
+                <span class="vital-num" id="mpText">50/50</span>
+              </div>
+              <div class="vital-track">
+                <div class="fill-mp" id="mpBar" style="width:100%;"></div>
+              </div>
+            </div>
+
+            <div class="vital-item">
+              <div class="vital-top">
+                <span style="color:#fbbf24;">EXP</span>
+                <span class="vital-num" id="expText">0/100</span>
+              </div>
+              <div class="vital-track">
+                <div class="fill-exp" id="expBar" style="width:0%;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 상단 고정 특이사항 영역 -->
+        <div class="condition-row" id="conditionRow">
+          <span class="condition-title">✨ 특이사항</span>
+          <div id="conditionList" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
+        </div>
+      </div>
+
+      <!-- 이름 변경 입력 바 -->
+      <div class="name-edit-bar" id="nameEditBar">
+        <input id="inputUserName" placeholder="캐릭터 이름 입력" maxlength="14" />
+        <button class="mini-btn primary" onclick="saveUserName()">저장</button>
+        <button class="mini-btn" onclick="toggleNameEdit(false)">취소</button>
+      </div>
+
+      <!-- 5개 메인 탭 버튼 -->
+      <div class="top-nav">
+        <button class="nav-btn" id="btn-equip" onclick="toggleDrawer('equip')">🛡️장비</button>
+        <button class="nav-btn" id="btn-inven" onclick="toggleDrawer('inven')">🎒인벤</button>
+        <button class="nav-btn" id="btn-skills" onclick="toggleDrawer('skills')">⚡스킬</button>
+        <button class="nav-btn" id="btn-train" onclick="toggleDrawer('train')">💪수련</button>
+        <button class="nav-btn" id="btn-stats" onclick="toggleDrawer('stats')">📊스텟</button>
       </div>
     </div>
 
-    <div class="drawer" id="drawerStatus"></div>
-    <div class="drawer" id="drawerTree"></div>
+    <!-- 위치 · 턴 · 재화 바 -->
+    <div class="sub-status-bar">
+      <div class="sub-meta-row">
+        <span style="color:#e2e8f0;" id="metaLoc">📍 시작의 광장 · T1</span>
+        <span style="color:#fbbf24;" id="metaGold">💰 100G</span>
+      </div>
+    </div>
+
+    <!-- 접이식 창 1: 장비 -->
+    <div class="drawer" id="drawer-equip">
+      <div class="drawer-header">
+        <span>🛡️ 장착 장비</span>
+        <span style="font-size:11px; color:#64748b;">항목 터치 시 상세 · 설정 열림</span>
+      </div>
+      <div id="equipSlotList" class="flex-col"></div>
+    </div>
+
+    <!-- 접이식 창 2: 인벤토리 (상시 노출 자율 아이템 습득 박스 포함) -->
+    <div class="drawer" id="drawer-inven">
+      <div class="drawer-header">
+        <span>🎒 인벤토리</span>
+        <span id="inven-capacity" style="color:#a5b4fc;">0 / 10칸</span>
+      </div>
+
+      <!-- 재화 관리 바 -->
+      <div class="gold-bar">
+        <span class="gold-amount" id="inven-gold">💰 100 G</span>
+        <div class="gold-controls">
+          <input type="number" id="inputGoldDelta" placeholder="금액" min="1" />
+          <button class="mini-btn success" onclick="queueGoldAdjust(1)">+수입</button>
+          <button class="mini-btn danger" onclick="queueGoldAdjust(-1)">-지출</button>
+        </div>
+      </div>
+
+      <!-- 상시 노출 자율 입력칸: 신규 아이템 직접 습득 -->
+      <div class="creation-card">
+        <div class="creation-title">
+          <span>📦 [자율 습득] 신규 아이템 등록</span>
+          <span class="creation-hint">이름만 입력해도 바로 등록</span>
+        </div>
+        <div class="input-inline">
+          <input id="newItemName" class="highlight-input" placeholder="습득한 아이템 이름 (예: 강철 검, 회복약)" />
+          <select id="newItemCat" style="width:82px; flex-shrink:0;" onchange="renderAddItemSubFields()">
+            <option value="consumable">소비</option>
+            <option value="weapon">무기</option>
+            <option value="armor">방어구</option>
+            <option value="misc">기타</option>
+          </select>
+          <button class="mini-btn primary" onclick="queueNewItem()">습득</button>
+        </div>
+        <div id="newItemSubFields" class="input-inline"></div>
+        <input id="newItemDesc" placeholder="한 줄 설명 입력 (생략 시 자동 생성)" />
+      </div>
+
+      <!-- 소지품 목록 (최대 10칸) -->
+      <div id="invenList" class="flex-col"></div>
+    </div>
+
+    <!-- 접이식 창 3: 스킬목록 (상시 노출 백지 상태창 스킬 각인 박스 포함) -->
+    <div class="drawer" id="drawer-skills">
+      <div class="drawer-header">
+        <span>⚡ 스킬목록</span>
+        <span id="skill-capacity" style="color:#a5b4fc;">0 / 8칸</span>
+      </div>
+
+      <!-- 상시 노출 자율 입력칸: 백지 상태창 신규 스킬 각인 -->
+      <div class="creation-card">
+        <div class="creation-title">
+          <span>✨ [백지 상태창] 신규 스킬 각인</span>
+          <span class="creation-hint">이름·분류만 적고 즉시 각인</span>
+        </div>
+        <div class="input-inline">
+          <input id="newSkillName" class="highlight-input" placeholder="신규 스킬명 입력 (예: 초승달 참격)" />
+          <select id="newSkillCat" style="width:76px; flex-shrink:0;" onchange="renderAddSkillSubFields()">
+            <option value="phys">물리</option>
+            <option value="mag">마법</option>
+            <option value="def">방어</option>
+            <option value="heal">회복</option>
+          </select>
+          <button class="mini-btn primary" onclick="queueNewSkill()">각인</button>
+        </div>
+        <div id="newSkillSubFields" class="input-inline"></div>
+        <input id="newSkillDesc" placeholder="한 줄 설명 또는 효과 입력 (생략 시 자동 생성)" />
+      </div>
+
+      <!-- 보유 스킬 목록 (최대 8칸) -->
+      <div id="skillList" class="flex-col"></div>
+    </div>
+
+    <!-- 접이식 창 4: 수련 -->
+    <div class="drawer" id="drawer-train">
+      <div class="drawer-header">
+        <span>💪 수련</span>
+        <span style="font-size:11px; color:#64748b;">하단 대기열에 누적 후 일괄 복사</span>
+      </div>
+
+      <input id="inputTrainNote" placeholder="수련 파트너 / 세부 지시 · 목표치 (비워두면 AI 랜덤)" />
+
+      <div class="train-grid" id="trainBtnGrid"></div>
+    </div>
+
+    <!-- 접이식 창 5: 스텟 -->
+    <div class="drawer" id="drawer-stats">
+      <div class="drawer-header">
+        <span id="stat-lv">📊 LV.1 · 미설정</span>
+        <span id="stat-ap" style="color:#34d399;">잔여 포인트: 0</span>
+      </div>
+
+      <div class="input-inline">
+        <input id="inputJobName" placeholder="직업 또는 칭호 입력 (예: 이세계 용사)" />
+        <button class="mini-btn primary" onclick="queueJobName()">적용</button>
+      </div>
+
+      <div class="combat-summary-grid">
+        <div class="combat-stat-box">
+          <div class="combat-stat-label">⚔️ 총 공격력</div>
+          <div class="combat-stat-val" id="sumAtk">10</div>
+        </div>
+        <div class="combat-stat-box">
+          <div class="combat-stat-label">🔮 총 마력</div>
+          <div class="combat-stat-val" id="sumMag">10</div>
+        </div>
+        <div class="combat-stat-box">
+          <div class="combat-stat-label">🛡️ 총 방어력</div>
+          <div class="combat-stat-val" id="sumDef">0</div>
+        </div>
+      </div>
+
+      <div id="statRowsList" class="flex-col"></div>
+
+      <div class="sub-section-box">
+        <div class="sub-section-label">✨ 특이사항 (축복 · 버프 · 저주)</div>
+        <div class="input-inline">
+          <input id="inputNewStatus" placeholder="예: 검술 수련 중, 여신의 가호" />
+          <button class="mini-btn primary" onclick="queueAddStatus()">추가</button>
+        </div>
+        <div id="drawerStatusBadges" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
+      </div>
+
+      <div class="sub-section-box">
+        <div class="slot-bar">
+          <div class="slot-btns">
+            <button class="mini-btn" id="slotBtn1" onclick="switchSaveSlot(1)">슬롯 1</button>
+            <button class="mini-btn" id="slotBtn2" onclick="switchSaveSlot(2)">슬롯 2</button>
+            <button class="mini-btn" id="slotBtn3" onclick="switchSaveSlot(3)">슬롯 3</button>
+          </div>
+          <button class="mini-btn danger" id="btnResetSlot" onclick="handleResetSlot()">초기화</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 이벤트 / 적 표시 -->
     <div id="offerArea"></div>
     <div id="enemyArea"></div>
 
+    <!-- 하단 기본 행동 영역 -->
     <div class="section-title">스킬 사용</div>
     <div class="grid-2" id="skillArea"></div>
 
-    <div id="choiceWrapper">
-      <div class="section-title">행동 선택</div>
-      <div class="flex-col" id="choiceArea"></div>
+    <div class="mp-spend-box" id="mpSpendBox">
+      <div class="mp-spend-header">
+        <span id="mpSpendTitle">💧 소모할 MP 입력</span>
+        <span id="mpSpendPreview" style="color:#6ee7b7;">예상 수치: 0</span>
+      </div>
+      <div class="mp-quick-row">
+        <button class="mini-btn" onclick="setQuickMp(5)">5</button>
+        <button class="mini-btn" onclick="setQuickMp(10)">10</button>
+        <button class="mini-btn" onclick="setQuickMp(20)">20</button>
+        <input type="number" id="inputSpendMp" placeholder="소모 MP" min="1" oninput="updateMpSpendPreview()" />
+        <button class="mini-btn primary" onclick="confirmVariableSkill()">담기</button>
+        <button class="mini-btn" onclick="closeMpSpendBox()">취소</button>
+      </div>
     </div>
 
     <div id="routeWrapper">
@@ -60,23 +1076,112 @@
       <div class="flex-wrap" id="routeArea"></div>
     </div>
 
+    <!-- 2. 하단 누적 대기열 및 일괄 복사 영역 -->
+    <div class="queue-box">
+      <div class="queue-header">
+        <span>📋 행동 및 변화 누적 대기열 (<span id="queueCount">0</span>건)</span>
+        <button class="mini-btn" id="btnClearQueue" onclick="clearActionQueue()" style="padding:3px 7px; font-size:10px;">전체 비우기</button>
+      </div>
+
+      <div class="queue-list" id="queueList"></div>
+
+      <div class="queue-footer">
+        <button class="btn-copy-all" id="btnCopyAll" onclick="copyAllActions()" disabled>
+          📋 누적 내용 일괄 복사 (0건)
+        </button>
+      </div>
+    </div>
+
     <div class="toast" id="toastBox"></div>
   </div>
 
   <script>
+    const SLOT_INDEX_KEY = 'etheria_rpg_active_slot';
+    const STORAGE_PREFIX = 'etheria_rpg_v3_slot_';
+    const LEGACY_STORAGE_KEY = 'etheria_rpg_v2_slot_1';
+    const MAX_INVEN_SLOTS = 10;
+    const MAX_SKILL_SLOTS = 8;
+
+    const SKILL_CAT_META = {
+      phys: { label: '물리', pillClass: 'red', btnClass: 'btn-phys' },
+      mag:  { label: '마법', pillClass: 'purple', btnClass: 'btn-mag' },
+      def:  { label: '방어', pillClass: 'amber', btnClass: 'btn-def' },
+      heal: { label: '회복', pillClass: 'green', btnClass: 'btn-heal' }
+    };
+
+    const STAT_META = [
+      { key: 'str', label: '근력', effectDesc: '1당 공격력 +2', gainLabel: '공격력 +2' },
+      { key: 'int', label: '지능', effectDesc: '1당 마력 +2', gainLabel: '마력 +2' },
+      { key: 'con', label: '근골', effectDesc: '1당 방어력 +1', gainLabel: '방어력 +1' },
+      { key: 'vit', label: '체력', effectDesc: '1당 최대 HP +10', gainLabel: '최대 HP +10' },
+      { key: 'mnd', label: '정신', effectDesc: '1당 최대 MP +10', gainLabel: '최대 MP +10' }
+    ];
+
+    const TRAIN_LIST = [
+      { id: 't_str', name: '대련', statKey: 'str', statLabel: '근력' },
+      { id: 't_int', name: '마력제어', statKey: 'int', statLabel: '지능' },
+      { id: 't_con', name: '충격흡수', statKey: 'con', statLabel: '근골' },
+      { id: 't_vit', name: '단련', statKey: 'vit', statLabel: '체력' },
+      { id: 't_mnd', name: '명상', statKey: 'mnd', statLabel: '정신' }
+    ];
+
     const DEFAULT_PLAYER = {
-      job: '미각성 전생자',
-      lv: 1, exp: 0, maxExp: 100, sp: 3,
-      hp: 100, maxHp: 100, mp: 50, maxMp: 50, gold: 100,
-      stats: { str: 10, agi: 10, int: 10, luk: 10 },
-      skills: [
-        { id: 's1', name: '기본 베기', type: 'atk', power: 18, mp: 0, chance: 90, cd: 0, maxCd: 0, unlocked: true, desc: '기본 물리 공격' },
-        { id: 's2', name: '응급 치유', type: 'heal', power: 30, mp: 12, chance: 95, cd: 0, maxCd: 2, unlocked: true, desc: 'HP 30 회복 (쿨 2턴)' },
-        { id: 's3', name: '강타', type: 'atk', power: 42, mp: 15, chance: 75, cd: 0, maxCd: 3, unlocked: false, costSp: 1, desc: '강력한 일격 (1 SP)' },
-        { id: 's4', name: '마력 폭발', type: 'atk', power: 75, mp: 28, chance: 80, cd: 0, maxCd: 4, unlocked: false, costSp: 2, desc: '고위력 마법 (2 SP)' }
+      name: '모험가',
+      job: '미설정',
+      lv: 1,
+      exp: 0, maxExp: 100,
+      ap: 0,
+      hp: 100, maxHp: 100,
+      mp: 50, maxMp: 50,
+      gold: 100,
+      baseAtk: 10,
+      baseMag: 10,
+      baseDef: 0,
+      stats: { str: 0, int: 0, con: 0, vit: 0, mnd: 0 },
+      statuses: [],
+      equipment: { weapon: null, armor: null, acc: null, special: null },
+      inventory: [
+        {
+          cat: 'weapon',
+          name: '초심자의 단검',
+          statType: '공격력',
+          val: 5,
+          desc: '기본 지급된 가벼운 호신용 단검'
+        },
+        {
+          cat: 'consumable',
+          name: '응급 회복약',
+          effectType: 'hp',
+          val: 30,
+          qty: 2,
+          desc: '마시면 HP를 30 즉시 회복하는 약초즙'
+        }
       ],
-      quests: [],
-      lastTurn: 0
+      skills: [
+        {
+          id: 's1',
+          name: '기본 베기',
+          cat: 'phys',
+          coeff: 1,
+          mp: 0,
+          cd: 0,
+          maxCd: 0,
+          effect: '(공격력 − 방어력) × 1 물리 피해',
+          desc: '무기를 휘둘러 눈앞의 대상을 베어낸다.'
+        },
+        {
+          id: 's2',
+          name: '응급 치유',
+          cat: 'heal',
+          coeff: 3,
+          mp: 0,
+          cd: 0,
+          maxCd: 2,
+          effect: '소모 MP × 3만큼 HP 회복 (사용 시 MP 선택)',
+          desc: '소모할 기력을 조절해 상처를 응급 처치한다.'
+        }
+      ],
+      lastSyncedTurn: 0
     };
 
     let turnData = {
@@ -85,36 +1190,337 @@
       routes: ['블루점프 길드', '스콘 상단', '왕국 정문', '남부 초원'],
       offer: null,
       enemy: null,
-      choices: ['다가온 모험가들에게 인사를 건넨다', '스킬트리에서 직업과 스킬을 각성한다'],
       reward: null
     };
 
-    let player = loadPlayer();
-    let currentDrawer = null;
+    let activeSlot = loadActiveSlot();
+    let player = loadPlayer(activeSlot);
+    let actionQueue = [];
+
+    let activeDrawer = null;
+    let expandedEquipSlot = null;
+    let pendingVariableSkillId = null;
+    let pendingResetConfirm = false;
+    let isEditingName = false;
+    let incomingAlert = '';
 
     function cleanStr(s) {
       return (s || '').replace(/_/g, ' ').trim();
     }
 
-    function loadPlayer() {
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function deepClone(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    }
+
+    function loadActiveSlot() {
       try {
-        const saved = localStorage.getItem('etheria_render_rpg_v1');
-        return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_PLAYER));
+        const s = parseInt(localStorage.getItem(SLOT_INDEX_KEY), 10);
+        return (s >= 1 && s <= 3) ? s : 1;
       } catch {
-        return JSON.parse(JSON.stringify(DEFAULT_PLAYER));
+        return 1;
+      }
+    }
+
+    function normalizeSkill(sk) {
+      const legacyMap = { atk: 'phys', heal: 'heal', phys: 'phys', mag: 'mag', def: 'def' };
+      const cat = legacyMap[sk.cat || sk.type] || 'phys';
+      let coeff = Number(sk.coeff) || 1;
+      if (coeff >= 20) coeff = Number((coeff / 100).toFixed(2));
+      return {
+        id: sk.id || ('sk_' + Date.now() + Math.random()),
+        name: sk.name || '이름 없는 스킬',
+        cat,
+        coeff,
+        mp: Number(sk.mp) || 0,
+        cd: Number(sk.cd) || 0,
+        maxCd: Number(sk.maxCd) || 0,
+        effect: sk.effect || (cat === 'heal' || cat === 'def'
+          ? `소모 MP × ${coeff} 적용`
+          : `계수 ×${coeff} 발동`),
+        desc: sk.desc || '등록된 한 줄 설명이 없습니다.'
+      };
+    }
+
+    function loadPlayer(slotNum) {
+      try {
+        let raw = localStorage.getItem(STORAGE_PREFIX + slotNum);
+        if (!raw && slotNum === 1) {
+          raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+        }
+        if (!raw) return deepClone(DEFAULT_PLAYER);
+        const parsed = JSON.parse(raw);
+        const rawSkills = Array.isArray(parsed.skills) ? parsed.skills : DEFAULT_PLAYER.skills;
+        const parsedStats = parsed.stats || {};
+        return {
+          ...deepClone(DEFAULT_PLAYER),
+          ...parsed,
+          stats: {
+            str: Number(parsedStats.str) || 0,
+            int: Number(parsedStats.int) || 0,
+            con: Number(parsedStats.con) || 0,
+            vit: Number(parsedStats.vit) || 0,
+            mnd: Number(parsedStats.mnd) || 0
+          },
+          equipment: {
+            ...DEFAULT_PLAYER.equipment,
+            ...(parsed.equipment || {})
+          },
+          inventory: Array.isArray(parsed.inventory) ? parsed.inventory : deepClone(DEFAULT_PLAYER.inventory),
+          skills: rawSkills.slice(0, MAX_SKILL_SLOTS).map(normalizeSkill)
+        };
+      } catch {
+        return deepClone(DEFAULT_PLAYER);
       }
     }
 
     function savePlayer() {
-      try { localStorage.setItem('etheria_render_rpg_v1', JSON.stringify(player)); } catch {}
+      try {
+        localStorage.setItem(SLOT_INDEX_KEY, String(activeSlot));
+        localStorage.setItem(STORAGE_PREFIX + activeSlot, JSON.stringify(player));
+      } catch {}
     }
 
+    function calcAtk(p) {
+      const base = Number(p.baseAtk) || 10;
+      const statBonus = (Number(p.stats.str) || 0) * 2;
+      const w = p.equipment.weapon;
+      const eqBonus = (w && w.statType === '공격력') ? (Number(w.val) || 0) : 0;
+      return base + statBonus + eqBonus;
+    }
+
+    function calcMag(p) {
+      const base = Number(p.baseMag) || 10;
+      const statBonus = (Number(p.stats.int) || 0) * 2;
+      const w = p.equipment.weapon;
+      const eqBonus = (w && w.statType === '마력') ? (Number(w.val) || 0) : 0;
+      return base + statBonus + eqBonus;
+    }
+
+    function calcDef(p) {
+      const base = Number(p.baseDef) || 0;
+      const statBonus = (Number(p.stats.con) || 0) * 1;
+      const a = p.equipment.armor;
+      const eqBonus = a ? (Number(a.def) || 0) : 0;
+      return base + statBonus + eqBonus;
+    }
+
+    function calcMaxHp(p) {
+      const statBonus = (Number(p.stats.vit) || 0) * 10;
+      const eqBonus = (p.equipment.armor && Number(p.equipment.armor.hp)) || 0;
+      return (Number(p.maxHp) || 100) + statBonus + eqBonus;
+    }
+
+    function calcMaxMp(p) {
+      const statBonus = (Number(p.stats.mnd) || 0) * 10;
+      return (Number(p.maxMp) || 50) + statBonus;
+    }
+
+    // 대기열 시뮬레이션
+    function getSimulatedState() {
+      const simPlayer = deepClone(player);
+      const simEnemy = turnData.enemy ? deepClone(turnData.enemy) : null;
+      const renderedLogs = [];
+
+      actionQueue.forEach(act => {
+        let logText = '';
+        if (act.type === 'skill') {
+          const sk = simPlayer.skills.find(s => s.id === act.skillId);
+          const name = act.name;
+          const cat = act.cat;
+          const coeff = Number(act.coeff) || 1;
+          const spendMp = Number(act.spendMp) || 0;
+
+          simPlayer.mp = Math.max(0, simPlayer.mp - spendMp);
+          if (sk) sk.cd = sk.maxCd;
+
+          const effMaxHp = calcMaxHp(simPlayer);
+          const effMaxMp = calcMaxMp(simPlayer);
+          const totalAtk = calcAtk(simPlayer);
+          const totalMag = calcMag(simPlayer);
+          const totalDef = calcDef(simPlayer);
+
+          if (cat === 'heal') {
+            const healAmt = Math.max(1, Math.floor(spendMp * coeff));
+            simPlayer.hp = Math.min(effMaxHp, simPlayer.hp + healAmt);
+            logText = `[스킬] '${name}'(회복 ×${coeff}) 발동 → MP ${spendMp} 소모, HP +${healAmt} 회복 (예상 HP ${simPlayer.hp}/${effMaxHp}, MP ${simPlayer.mp}/${effMaxMp})`;
+          } else if (cat === 'def') {
+            const defAmt = Math.max(1, Math.floor(spendMp * coeff));
+            logText = `[스킬] '${name}'(방어 ×${coeff}) 발동 → MP ${spendMp} 소모, 방어 수치 +${defAmt} (기본 방어력 ${totalDef}, 합계 ${totalDef + defAmt} | 예상 MP ${simPlayer.mp}/${effMaxMp})`;
+          } else {
+            const isMag = cat === 'mag';
+            const basePower = isMag ? totalMag : totalAtk;
+            const typeLabel = isMag ? '마법' : '물리';
+            if (simEnemy) {
+              const enemyDef = Number(simEnemy.def) || 0;
+              const dmg = Math.max(1, Math.floor((basePower - enemyDef) * coeff));
+              simEnemy.hp = Math.max(0, simEnemy.hp - dmg);
+              if (simEnemy.hp === 0 && simEnemy.count > 1) {
+                simEnemy.count -= 1;
+                simEnemy.hp = simEnemy.maxHp;
+                logText = `[전투] '${name}'(${typeLabel} ×${coeff}) 발동 → ${dmg} 피해, 1체 처치! (남은 적: ${simEnemy.name} ×${simEnemy.count} | HP ${simEnemy.hp}/${simEnemy.maxHp} | 내 방어력 ${totalDef})`;
+              } else {
+                const countTag = simEnemy.count > 1 ? ` ×${simEnemy.count}` : '';
+                logText = `[전투] '${name}'(${typeLabel} ×${coeff}) 발동 → ${dmg} 피해 (${simEnemy.name}${countTag} HP ${simEnemy.hp}/${simEnemy.maxHp} | 내 방어력 ${totalDef})`;
+              }
+            } else {
+              const potDmg = Math.max(1, Math.floor(basePower * coeff));
+              logText = `[스킬] '${name}'(${typeLabel} ×${coeff}) 발동 → 위력 ${potDmg} (예상 MP ${simPlayer.mp}/${effMaxMp} | 내 방어력 ${totalDef})`;
+            }
+          }
+        } else if (act.type === 'equip_from_inven') {
+          const item = simPlayer.inventory[act.idx];
+          if (item && (item.cat === 'weapon' || item.cat === 'armor')) {
+            const slotKey = item.cat;
+            const prev = simPlayer.equipment[slotKey];
+            if (slotKey === 'weapon') {
+              simPlayer.equipment.weapon = { name: item.name, statType: item.statType || '공격력', val: Number(item.val) || 0, desc: item.desc || '' };
+              logText = `[장비] 무기 '${item.name}' 장착 (${simPlayer.equipment.weapon.statType} +${simPlayer.equipment.weapon.val})`;
+            } else {
+              simPlayer.equipment.armor = { name: item.name, hp: Number(item.hp) || 0, def: Number(item.def) || 0, desc: item.desc || '' };
+              logText = `[장비] 방어구 '${item.name}' 장착 (HP +${simPlayer.equipment.armor.hp}, 방어력 +${simPlayer.equipment.armor.def})`;
+            }
+            if (prev) simPlayer.inventory[act.idx] = { cat: slotKey, ...prev };
+            else simPlayer.inventory.splice(act.idx, 1);
+            const effMaxHp = calcMaxHp(simPlayer);
+            if (simPlayer.hp > effMaxHp) simPlayer.hp = effMaxHp;
+          }
+        } else if (act.type === 'unequip') {
+          const item = simPlayer.equipment[act.slotKey];
+          if (item) {
+            if ((act.slotKey === 'weapon' || act.slotKey === 'armor') && simPlayer.inventory.length < MAX_INVEN_SLOTS) {
+              simPlayer.inventory.push({ cat: act.slotKey, ...item });
+            }
+            simPlayer.equipment[act.slotKey] = null;
+            const effMaxHp = calcMaxHp(simPlayer);
+            if (simPlayer.hp > effMaxHp) simPlayer.hp = effMaxHp;
+            const labelMap = { weapon: '무기', armor: '방어구', acc: '장신구', special: '특수슬롯' };
+            logText = `[장비] ${labelMap[act.slotKey]} '${item.name}' 해제`;
+          }
+        } else if (act.type === 'custom_equip') {
+          simPlayer.equipment[act.slotKey] = { name: act.name, effect: act.effect };
+          const label = act.slotKey === 'acc' ? '장신구' : '특수슬롯';
+          logText = `[장비] ${label} '${act.name}' 장착 (${act.effect})`;
+        } else if (act.type === 'use_item') {
+          const item = simPlayer.inventory[act.idx];
+          if (item && item.cat === 'consumable') {
+            const effMaxHp = calcMaxHp(simPlayer);
+            const effMaxMp = calcMaxMp(simPlayer);
+            const val = Number(item.val) || 0;
+            let effText = '';
+            if (item.effectType === 'hp') {
+              simPlayer.hp = Math.min(effMaxHp, simPlayer.hp + val);
+              effText = `HP +${val} 회복 (예상 HP ${simPlayer.hp}/${effMaxHp})`;
+            } else if (item.effectType === 'mp') {
+              simPlayer.mp = Math.min(effMaxMp, simPlayer.mp + val);
+              effText = `MP +${val} 회복 (예상 MP ${simPlayer.mp}/${effMaxMp})`;
+            } else if (item.effectType === 'both') {
+              simPlayer.hp = Math.min(effMaxHp, simPlayer.hp + val);
+              simPlayer.mp = Math.min(effMaxMp, simPlayer.mp + val);
+              effText = `HP/MP +${val} 회복 (예상 HP ${simPlayer.hp}/${effMaxHp}, MP ${simPlayer.mp}/${effMaxMp})`;
+            } else {
+              effText = item.desc || '효과 발동';
+            }
+            if ((item.qty || 1) > 1) item.qty -= 1;
+            else simPlayer.inventory.splice(act.idx, 1);
+            logText = `[아이템] '${item.name}' 사용 → ${effText}`;
+          }
+        } else if (act.type === 'discard_item') {
+          const item = simPlayer.inventory[act.idx];
+          if (item) {
+            simPlayer.inventory.splice(act.idx, 1);
+            logText = `[아이템] '${item.name}' 버림`;
+          }
+        } else if (act.type === 'add_item') {
+          const newItem = deepClone(act.item);
+          if (newItem.cat === 'consumable' || newItem.cat === 'misc') {
+            const ex = simPlayer.inventory.find(it => it.cat === newItem.cat && it.name === newItem.name);
+            if (ex) ex.qty = (ex.qty || 1) + (newItem.qty || 1);
+            else if (simPlayer.inventory.length < MAX_INVEN_SLOTS) simPlayer.inventory.push(newItem);
+          } else if (simPlayer.inventory.length < MAX_INVEN_SLOTS) {
+            simPlayer.inventory.push(newItem);
+          }
+          const qtyStr = (newItem.qty && newItem.qty > 1) ? ` ×${newItem.qty}` : '';
+          let specStr = '기타';
+          if (newItem.cat === 'weapon') specStr = `무기 | ${newItem.statType} +${newItem.val}`;
+          else if (newItem.cat === 'armor') specStr = `방어구 | HP +${newItem.hp}, 방어 +${newItem.def}`;
+          else if (newItem.cat === 'consumable') {
+            const m = { hp: `HP +${newItem.val}`, mp: `MP +${newItem.val}`, both: `HP/MP +${newItem.val}`, none: '특수효과' };
+            specStr = `소비 | ${m[newItem.effectType] || '소비'}`;
+          }
+          logText = `[아이템 습득] '${newItem.name}${qtyStr}' (${specStr} | ${newItem.desc})`;
+        } else if (act.type === 'gold') {
+          const before = simPlayer.gold;
+          simPlayer.gold = Math.max(0, simPlayer.gold + act.delta);
+          const diff = simPlayer.gold - before;
+          const signStr = diff >= 0 ? `+${diff}` : `${diff}`;
+          logText = `[재화] ${signStr}G 변동 (예상 보유: ${simPlayer.gold}G)`;
+        } else if (act.type === 'train') {
+          logText = act.note
+            ? `[수련] '${act.name}' 실시 (대상 스탯: ${act.statLabel} | 지시: ${act.note})`
+            : `[수련] '${act.name}' 실시 (대상 스탯: ${act.statLabel} | 판정: 랜덤 상승)`;
+        } else if (act.type === 'stat_ap') {
+          const meta = STAT_META.find(m => m.key === act.statKey);
+          if (meta && simPlayer.ap > 0) {
+            simPlayer.ap -= 1;
+            simPlayer.stats[act.statKey] = (Number(simPlayer.stats[act.statKey]) || 0) + 1;
+            if (act.statKey === 'vit') simPlayer.hp += 10;
+            if (act.statKey === 'mnd') simPlayer.mp += 10;
+            logText = `[스텟] '${meta.label}' 포인트 투자 +1 (예상 ${meta.label} ${simPlayer.stats[act.statKey]} | ${meta.gainLabel})`;
+          }
+        } else if (act.type === 'job') {
+          simPlayer.job = act.job;
+          logText = `[스텟] 직업/칭호 '${act.job}' 설정`;
+        } else if (act.type === 'add_status') {
+          if (!simPlayer.statuses.includes(act.status)) simPlayer.statuses.push(act.status);
+          logText = `[특이사항] '${act.status}' 상태 추가`;
+        } else if (act.type === 'del_status') {
+          const removed = simPlayer.statuses[act.idx];
+          if (removed) {
+            simPlayer.statuses.splice(act.idx, 1);
+            logText = `[특이사항] '${removed}' 상태 해제`;
+          }
+        } else if (act.type === 'add_skill') {
+          if (simPlayer.skills.length < MAX_SKILL_SLOTS) simPlayer.skills.push(deepClone(act.skill));
+          const catLabel = SKILL_CAT_META[act.skill.cat].label;
+          const mpInfo = (act.skill.cat === 'heal' || act.skill.cat === 'def') ? '가변MP' : `MP ${act.skill.mp}`;
+          logText = `[신규 스킬 각인] '${act.skill.name}' (${catLabel} | 계수 ×${act.skill.coeff} | ${mpInfo} | ${act.skill.desc})`;
+        } else if (act.type === 'del_skill') {
+          const sk = simPlayer.skills.find(s => s.id === act.skillId);
+          if (sk) {
+            simPlayer.skills = simPlayer.skills.filter(s => s.id !== act.skillId);
+            logText = `[스킬] '${sk.name}' 삭제`;
+          }
+        } else if (act.type === 'move') {
+          logText = `[이동] '${turnData.loc}'에서 '${act.dest}'(으)로 이동`;
+        } else if (act.type === 'offer') {
+          logText = `[${act.decision}] ${act.from}의 ${act.offerType} '${act.title}' ${act.decision}`;
+        }
+
+        if (logText) renderedLogs.push(logText);
+      });
+
+      return { simPlayer, simEnemy, renderedLogs };
+    }
+
+    // AI 다음 턴 링크 파라미터 수신 → 그때 비로소 localStorage 반영
     function parseIncomingData() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('turn')) turnData.turn = parseInt(params.get('turn'), 10) || 1;
       if (params.get('loc')) turnData.loc = cleanStr(params.get('loc'));
       if (params.get('routes')) turnData.routes = params.get('routes').split(',').map(cleanStr).filter(Boolean);
-      if (params.get('choices')) turnData.choices = params.get('choices').split(',').map(cleanStr).filter(Boolean);
+
+      const incomingUser = params.get('user') || params.get('name');
+      if (incomingUser && incomingUser !== '{user}' && incomingUser !== '{{user}}') {
+        player.name = cleanStr(incomingUser);
+      }
 
       const offerRaw = params.get('offer');
       if (offerRaw && offerRaw !== 'null' && offerRaw !== 'none') {
@@ -124,252 +1530,977 @@
 
       const enemyRaw = params.get('enemy');
       if (enemyRaw && enemyRaw !== 'null' && enemyRaw !== 'none') {
-        const [name, hp, maxHp, atk] = enemyRaw.split('|');
-        turnData.enemy = { name: cleanStr(name), hp: parseInt(hp, 10) || 50, maxHp: parseInt(maxHp, 10) || 50, atk: parseInt(atk, 10) || 10 };
+        const [name, hp, maxHp, atk, def, count] = enemyRaw.split('|');
+        turnData.enemy = {
+          name: cleanStr(name),
+          hp: parseInt(hp, 10) || 50,
+          maxHp: parseInt(maxHp, 10) || 50,
+          atk: parseInt(atk, 10) || 10,
+          def: parseInt(def, 10) || 0,
+          count: Math.max(1, parseInt(count, 10) || 1)
+        };
       }
 
-      const rewardRaw = params.get('reward');
-      if (rewardRaw && rewardRaw !== 'null' && rewardRaw !== 'none') {
-        const [gold, exp, sp] = rewardRaw.split('|').map(v => parseInt(v, 10) || 0);
-        turnData.reward = { gold, exp, sp };
-      }
+      const isNewTurn = (turnData.turn > 1 || window.location.search.length > 1) && player.lastSyncedTurn !== turnData.turn;
+      if (isNewTurn) {
+        const notices = [];
 
-      applyTurnRewards();
-    }
+        if (params.get('job')) player.job = cleanStr(params.get('job'));
+        if (params.get('lv')) player.lv = Math.max(1, parseInt(params.get('lv'), 10) || player.lv);
+        if (params.get('gold')) player.gold = Math.max(0, parseInt(params.get('gold'), 10));
+        if (params.get('ap')) player.ap = Math.max(0, parseInt(params.get('ap'), 10));
 
-    function applyTurnRewards() {
-      const r = turnData.reward;
-      if (r && player.lastTurn !== turnData.turn) {
-        player.exp += (r.exp || 0);
-        player.sp += (r.sp || 0);
-        player.gold += (r.gold || 0);
-        while (player.exp >= player.maxExp) {
-          player.lv += 1;
-          player.exp -= player.maxExp;
-          player.maxExp = Math.floor(player.maxExp * 1.4);
-          player.sp += 2;
+        const statRaw = params.get('stat');
+        if (statRaw && statRaw !== 'none' && statRaw !== 'null') {
+          const keyMap = { '근력': 'str', '지능': 'int', '근골': 'con', '체력': 'vit', '정신': 'mnd', str: 'str', int: 'int', con: 'con', vit: 'vit', mnd: 'mnd' };
+          const nameMap = { str: '근력', int: '지능', con: '근골', vit: '체력', mnd: '정신' };
+          statRaw.split(',').forEach(part => {
+            const clean = cleanStr(part);
+            const absMatch = clean.match(/^(근력|지능|근골|체력|정신|str|int|con|vit|mnd)\s*:\s*(\d+)$/i);
+            const relMatch = clean.match(/^(근력|지능|근골|체력|정신|str|int|con|vit|mnd)\s*([+-])\s*(\d+)$/i);
+            if (absMatch) {
+              const k = keyMap[absMatch[1].toLowerCase()] || keyMap[absMatch[1]];
+              if (k) player.stats[k] = Math.max(0, parseInt(absMatch[2], 10) || 0);
+            } else if (relMatch) {
+              const k = keyMap[relMatch[1].toLowerCase()] || keyMap[relMatch[1]];
+              const sign = relMatch[2] === '-' ? -1 : 1;
+              const amt = (parseInt(relMatch[3], 10) || 0) * sign;
+              if (k && amt !== 0) {
+                player.stats[k] = Math.max(0, (Number(player.stats[k]) || 0) + amt);
+                notices.push(`${nameMap[k]} ${amt > 0 ? '+' + amt : amt}`);
+              }
+            }
+          });
         }
-        player.lastTurn = turnData.turn;
+
+        const statusRaw = params.get('status');
+        if (statusRaw) {
+          if (statusRaw === 'none' || statusRaw === 'null') player.statuses = [];
+          else player.statuses = statusRaw.split(',').map(cleanStr).filter(Boolean);
+        }
+
+        const equipRaw = params.get('equip');
+        if (equipRaw && equipRaw !== 'none' && equipRaw !== 'null') {
+          equipRaw.split(',').forEach(entry => {
+            const parts = entry.split(':').map(cleanStr);
+            if (parts[0] === '해제') {
+              const map = { '무기': 'weapon', '방어구': 'armor', '장신구': 'acc', '특수슬롯': 'special' };
+              if (map[parts[1]]) player.equipment[map[parts[1]]] = null;
+            } else if (parts[0] === '무기' && parts[1]) {
+              player.equipment.weapon = { name: parts[1], statType: parts[2] || '공격력', val: parseInt(parts[3], 10) || 0, desc: parts[4] || '' };
+            } else if (parts[0] === '방어구' && parts[1]) {
+              player.equipment.armor = { name: parts[1], hp: parseInt(parts[2], 10) || 0, def: parseInt(parts[3], 10) || 0, desc: parts[4] || '' };
+            } else if (parts[0] === '장신구' && parts[1]) {
+              player.equipment.acc = { name: parts[1], effect: parts[2] || '특수 효과' };
+            } else if (parts[0] === '특수슬롯' && parts[1]) {
+              player.equipment.special = { name: parts[1], effect: parts[2] || '특수 효과' };
+            }
+          });
+        }
+
+        const invenRaw = params.get('inven');
+        if (invenRaw && invenRaw !== 'none' && invenRaw !== 'null') {
+          invenRaw.split(',').forEach(entry => {
+            const op = entry[0];
+            const parts = entry.slice(1).split(':').map(cleanStr);
+            const catMap = { '소비': 'consumable', '무기': 'weapon', '방어구': 'armor', '기타': 'misc' };
+            const cat = catMap[parts[0]] || 'misc';
+            const name = parts[1];
+            if (!name) return;
+
+            if (op === '-') {
+              const delQty = parseInt(parts[2], 10) || 1;
+              const idx = player.inventory.findIndex(it => it.name === name);
+              if (idx !== -1) {
+                const it = player.inventory[idx];
+                if ((it.cat === 'consumable' || it.cat === 'misc') && (it.qty || 1) > delQty) {
+                  it.qty -= delQty;
+                } else {
+                  player.inventory.splice(idx, 1);
+                }
+              }
+            } else if (op === '+') {
+              if (cat === 'consumable') {
+                const effectType = parts[2] || 'hp';
+                const val = parseInt(parts[3], 10) || 0;
+                const qty = parseInt(parts[4], 10) || 1;
+                const desc = parts[5] || `사용 시 ${effectType.toUpperCase()} +${val}`;
+                const ex = player.inventory.find(it => it.cat === 'consumable' && it.name === name);
+                if (ex) ex.qty = (ex.qty || 1) + qty;
+                else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push({ cat, name, effectType, val, qty, desc });
+              } else if (cat === 'weapon') {
+                if (player.inventory.length < MAX_INVEN_SLOTS) {
+                  player.inventory.push({ cat, name, statType: parts[2] || '공격력', val: parseInt(parts[3], 10) || 0, desc: parts[4] || '' });
+                }
+              } else if (cat === 'armor') {
+                if (player.inventory.length < MAX_INVEN_SLOTS) {
+                  player.inventory.push({ cat, name, hp: parseInt(parts[2], 10) || 0, def: parseInt(parts[3], 10) || 0, desc: parts[4] || '' });
+                }
+              } else {
+                const qty = parseInt(parts[2], 10) || 1;
+                const desc = parts[3] || '소지 중인 기타 물품';
+                const ex = player.inventory.find(it => it.cat === 'misc' && it.name === name);
+                if (ex) ex.qty = (ex.qty || 1) + qty;
+                else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push({ cat: 'misc', name, qty, desc });
+              }
+            }
+          });
+        }
+
+        const skillRaw = params.get('skill');
+        if (skillRaw && skillRaw !== 'none' && skillRaw !== 'null') {
+          const catMap = { '물리': 'phys', '마법': 'mag', '방어': 'def', '회복': 'heal' };
+          skillRaw.split(',').forEach(entry => {
+            const op = entry[0];
+            const parts = entry.slice(1).split(':').map(cleanStr);
+            if (op === '-') {
+              player.skills = player.skills.filter(s => s.name !== parts[0]);
+            } else if (op === '+' && parts[1] && player.skills.length < MAX_SKILL_SLOTS) {
+              const cat = catMap[parts[0]] || 'phys';
+              const name = parts[1];
+              if (!player.skills.some(s => s.name === name)) {
+                player.skills.push({
+                  id: 'sk_' + Date.now() + Math.random(),
+                  name,
+                  cat,
+                  coeff: parseFloat(parts[2]) || 1,
+                  mp: parseInt(parts[3], 10) || 0,
+                  cd: 0,
+                  maxCd: parseInt(parts[4], 10) || 0,
+                  effect: parts[5] || '고유 스킬 효과',
+                  desc: parts[6] || '각인된 고유 스킬'
+                });
+              }
+            }
+          });
+        }
+
+        const rewardRaw = params.get('reward');
+        if (rewardRaw && rewardRaw !== 'null' && rewardRaw !== 'none') {
+          const [gold, exp, ap] = rewardRaw.split('|').map(v => parseInt(v, 10) || 0);
+          player.gold += gold;
+          player.exp += exp;
+          player.ap = (Number(player.ap) || 0) + ap;
+          while (player.exp >= player.maxExp) {
+            player.lv += 1;
+            player.exp -= player.maxExp;
+            player.maxExp = Math.floor(player.maxExp * 1.4);
+            player.ap = (Number(player.ap) || 0) + 3;
+            player.hp = calcMaxHp(player);
+            player.mp = calcMaxMp(player);
+            notices.push(`LV.${player.lv} 달성! (AP +3)`);
+          }
+        }
+
+        const effMaxHp = calcMaxHp(player);
+        const effMaxMp = calcMaxMp(player);
+        if (params.get('hp') !== null) player.hp = Math.max(0, Math.min(effMaxHp, parseInt(params.get('hp'), 10)));
+        else if (player.hp > effMaxHp) player.hp = effMaxHp;
+
+        if (params.get('mp') !== null) player.mp = Math.max(0, Math.min(effMaxMp, parseInt(params.get('mp'), 10)));
+        else if (player.mp > effMaxMp) player.mp = effMaxMp;
+
+        if (params.get('exp') !== null) {
+          player.exp = Math.max(0, parseInt(params.get('exp'), 10));
+          while (player.exp >= player.maxExp) {
+            player.lv += 1;
+            player.exp -= player.maxExp;
+            player.maxExp = Math.floor(player.maxExp * 1.4);
+            player.ap = (Number(player.ap) || 0) + 3;
+          }
+        }
+
+        player.lastSyncedTurn = turnData.turn;
         savePlayer();
+
+        if (notices.length > 0) {
+          incomingAlert = `✨ 턴 ${turnData.turn} 상태 동기화 완료: ${notices.join(', ')}`;
+        }
       }
     }
 
-    function sendToChat(text) {
+    function pushAction(actionObj) {
+      actionQueue.push(actionObj);
+      render();
+    }
+
+    function removeQueuedAction(idx) {
+      actionQueue.splice(idx, 1);
+      render();
+    }
+
+    function clearActionQueue() {
+      actionQueue = [];
+      pendingVariableSkillId = null;
+      render();
+    }
+
+    function copyAllActions() {
+      const { renderedLogs } = getSimulatedState();
+      if (renderedLogs.length === 0) return;
+
+      const fullText = renderedLogs.join('\n');
       if (navigator.clipboard) {
-        navigator.clipboard.writeText(text).catch(() => {});
+        navigator.clipboard.writeText(fullText).catch(() => {});
       }
+
       const toast = document.getElementById('toastBox');
       toast.style.display = 'block';
-      toast.innerHTML = `✅ 복사 완료! 채팅창에 붙여넣기 하세요:<br><span style="color:#fff; font-weight:normal;">${text}</span>`;
-      render();
+      toast.innerHTML = `✅ 총 ${renderedLogs.length}건 일괄 복사 완료! 채팅창에 붙여넣기 하세요:<br><span style="color:#fff; font-weight:normal; white-space:pre-line;">${escapeHtml(fullText)}</span>`;
     }
 
-    function useSkill(skillId) {
-      const sk = player.skills.find(s => s.id === skillId);
-      if (!sk || sk.cd > 0 || player.mp < sk.mp) return;
-
-      const hit = Math.random() * 100 <= sk.chance;
-      const crit = hit && Math.random() < (0.1 + player.stats.luk * 0.01);
-      player.mp -= sk.mp;
-
-      player.skills.forEach(s => {
-        if (s.id === sk.id) s.cd = s.maxCd;
-        else if (s.cd > 0) s.cd -= 1;
-      });
-
-      let log = '';
-      if (sk.type === 'heal') {
-        const amount = crit ? Math.floor(sk.power * 1.5) : sk.power;
-        player.hp = Math.min(player.maxHp, player.hp + amount);
-        log = `[스킬] '${sk.name}' 사용 → HP +${amount} 회복 (HP ${player.hp}/${player.maxHp}, MP ${player.mp}/${player.maxMp})`;
-      } else if (!hit) {
-        log = `[전투] '${sk.name}' 사용 → 빗나감 (명중 ${sk.chance}% 실패 | MP ${player.mp}/${player.maxMp})`;
-      } else {
-        const base = sk.power + Math.floor(player.stats.str * 0.8);
-        const dmg = crit ? Math.floor(base * 1.6) : base;
-        if (turnData.enemy) {
-          turnData.enemy.hp = Math.max(0, turnData.enemy.hp - dmg);
-          log = `[전투] '${sk.name}' ${crit ? '치명타 ' : ''}${dmg} 피해 (${turnData.enemy.name} HP ${turnData.enemy.hp}/${turnData.enemy.maxHp})`;
-          if (turnData.enemy.hp > 0) {
-            const counter = Math.max(1, (turnData.enemy.atk || 10) - Math.floor(player.stats.agi * 0.2));
-            player.hp = Math.max(0, player.hp - counter);
-            log += ` → 적 반격 -${counter} (내 HP ${player.hp}/${player.maxHp})`;
-          } else {
-            log += ` → ${turnData.enemy.name} 처치 완료`;
-          }
-        } else {
-          log = `[스킬] '${sk.name}' 발동 → ${crit ? '치명타 ' : ''}${dmg} 위력 (MP ${player.mp}/${player.maxMp})`;
-        }
-      }
-      savePlayer();
-      sendToChat(log);
-    }
-
-    function respondOffer(accept) {
-      const o = turnData.offer;
-      if (!o) return;
-      if (accept) {
-        if (o.type === '퀘스트') {
-          player.quests.push({ title: o.title, from: o.from, reward: o.reward || '' });
-          savePlayer();
-        }
-        sendToChat(`[수락] ${o.from}의 ${o.type} '${o.title}' 수락`);
-      } else {
-        sendToChat(`[거절] ${o.from}의 ${o.type} '${o.title}' 거절`);
+    function toggleNameEdit(forceState) {
+      isEditingName = typeof forceState === 'boolean' ? forceState : !isEditingName;
+      const bar = document.getElementById('nameEditBar');
+      bar.classList.toggle('open', isEditingName);
+      if (isEditingName) {
+        const input = document.getElementById('inputUserName');
+        input.value = player.name || '';
+        input.focus();
       }
     }
 
-    function moveRoute(dest) {
-      player.skills.forEach(s => { if (s.cd > 0) s.cd -= 1; });
-      savePlayer();
-      sendToChat(`[이동] '${turnData.loc}'에서 '${dest}'(으)로 이동`);
-    }
-
-    function unlockSkill(id) {
-      const sk = player.skills.find(s => s.id === id);
-      if (!sk || sk.unlocked || player.sp < sk.costSp) return;
-      player.sp -= sk.costSp;
-      sk.unlocked = true;
-      savePlayer();
-      render();
-    }
-
-    function awakenBlankStatus() {
-      const jobVal = document.getElementById('inputJob').value.trim();
-      const skillVal = document.getElementById('inputSkill').value.trim();
-      const typeVal = document.getElementById('selectSkillType').value;
-      const logs = [];
-
-      if (jobVal) {
-        player.job = jobVal;
-        logs.push(`직업 '${jobVal}' 각성`);
-      }
-      if (skillVal) {
-        player.skills.push({
-          id: 'c_' + Date.now(),
-          name: skillVal,
-          type: typeVal,
-          power: typeVal === 'atk' ? 45 : 40,
-          mp: 15, chance: 85, cd: 0, maxCd: 2,
-          unlocked: true,
-          desc: '백지 상태창 창조 스킬'
-        });
-        logs.push(`고유 스킬 '${skillVal}' 등록`);
-      }
-      if (logs.length > 0) {
+    function saveUserName() {
+      const val = document.getElementById('inputUserName').value.trim();
+      if (val) {
+        player.name = val;
         savePlayer();
-        sendToChat(`[백지 상태창] ${logs.join(', ')}`);
       }
-    }
-
-    function resetSave() {
-      localStorage.removeItem('etheria_render_rpg_v1');
-      player = JSON.parse(JSON.stringify(DEFAULT_PLAYER));
+      toggleNameEdit(false);
       render();
     }
 
     function toggleDrawer(name) {
-      currentDrawer = currentDrawer === name ? null : name;
+      activeDrawer = activeDrawer === name ? null : name;
+      pendingResetConfirm = false;
+      render();
+      if (activeDrawer === 'stats') {
+        const { simPlayer } = getSimulatedState();
+        const jobInp = document.getElementById('inputJobName');
+        if (jobInp) jobInp.value = simPlayer.job === '미설정' ? '' : (simPlayer.job || '');
+      }
+    }
+
+    function toggleEquipSlot(slotKey) {
+      expandedEquipSlot = expandedEquipSlot === slotKey ? null : slotKey;
       render();
     }
 
-    function render() {
-      document.getElementById('topStat').innerHTML =
-        `[${turnData.loc}] T${turnData.turn} · ❤️${player.hp}/${player.maxHp} · 💧${player.mp}/${player.maxMp} · 💰${player.gold}G`;
-      document.getElementById('btnToggleTree').textContent = `스킬트리(${player.sp})`;
-      document.getElementById('btnToggleStatus').className = currentDrawer === 'status' ? 'active' : '';
-      document.getElementById('btnToggleTree').className = currentDrawer === 'tree' ? 'active' : '';
+    function startTraining(trainId) {
+      const tr = TRAIN_LIST.find(t => t.id === trainId);
+      if (!tr) return;
+      const noteInput = document.getElementById('inputTrainNote');
+      const note = noteInput ? noteInput.value.trim() : '';
+      pushAction({ type: 'train', name: tr.name, statLabel: tr.statLabel, note });
+    }
 
-      const dStatus = document.getElementById('drawerStatus');
-      dStatus.className = 'drawer' + (currentDrawer === 'status' ? ' open' : '');
-      dStatus.innerHTML = `
-        <div><strong>직업:</strong> ${player.job} (LV.${player.lv} | EXP ${player.exp}/${player.maxExp})</div>
-        <div><strong>스탯:</strong> 근력 ${player.stats.str} / 민첩 ${player.stats.agi} / 지능 ${player.stats.int} / 행운 ${player.stats.luk}</div>
-        <div><strong>수락한 퀘스트:</strong> ${player.quests.length ? player.quests.map(q => q.title).join(', ') : '없음'}</div>
-        <button class="btn-no" onclick="resetSave()">세이브 초기화</button>
-      `;
+    function queueJobName() {
+      const val = document.getElementById('inputJobName').value.trim();
+      pushAction({ type: 'job', job: val || '미설정' });
+    }
 
-      const dTree = document.getElementById('drawerTree');
-      dTree.className = 'drawer' + (currentDrawer === 'tree' ? ' open' : '');
-      dTree.innerHTML = `
-        <div style="font-weight:bold; color:#a5b4fc;">[백지 상태창] 직업 / 스킬 직접 창조</div>
-        <input id="inputJob" placeholder="각성할 직업명 입력 (예: 그림자 마검사)" />
-        <div style="display:flex; gap:4px;">
-          <input id="inputSkill" style="flex:1;" placeholder="창조할 고유 스킬명" />
-          <select id="selectSkillType"><option value="atk">공격</option><option value="heal">회복</option></select>
-          <button class="active" onclick="awakenBlankStatus()">각인</button>
-        </div>
-        <div style="font-weight:bold; margin-top:4px;">스킬트리 (보유 SP: ${player.sp})</div>
-        ${player.skills.map(s => `
-          <div style="display:flex; justify-content:space-between; align-items:center; background:#181b28; padding:6px; border-radius:4px;">
-            <span>${s.name} (${s.desc})</span>
-            ${s.unlocked
-              ? '<span style="color:#34d399; font-weight:bold;">[습득됨]</span>'
-              : `<button ${player.sp < s.costSp ? 'disabled' : ''} onclick="unlockSkill('${s.id}')">해금(${s.costSp}SP)</button>`}
-          </div>
-        `).join('')}
-      `;
+    function queueStatAp(statKey) {
+      const { simPlayer } = getSimulatedState();
+      if ((Number(simPlayer.ap) || 0) <= 0) return;
+      pushAction({ type: 'stat_ap', statKey });
+    }
 
-      const offerArea = document.getElementById('offerArea');
-      if (turnData.offer) {
-        const o = turnData.offer;
-        offerArea.innerHTML = `
-          <div class="offer-box">
-            <div style="font-weight:bold; color:#fbbf24;">[${o.type}] ${o.title} (${o.from})</div>
-            <div style="margin:4px 0; font-size:12px;">${o.desc} ${o.reward ? `(보상: ${o.reward})` : ''}</div>
-            <div class="grid-2" style="margin-top:6px;">
-              <button class="btn-yes" onclick="respondOffer(true)">[수락한다]</button>
-              <button class="btn-no" onclick="respondOffer(false)">[거절한다]</button>
-            </div>
-          </div>`;
+    function queueAddStatus() {
+      const inp = document.getElementById('inputNewStatus');
+      const val = inp.value.trim();
+      if (!val) return;
+      inp.value = '';
+      pushAction({ type: 'add_status', status: val });
+    }
+
+    function queueRemoveStatus(idx) {
+      pushAction({ type: 'del_status', idx });
+    }
+
+    function switchSaveSlot(slotNum) {
+      if (activeSlot === slotNum) return;
+      activeSlot = slotNum;
+      actionQueue = [];
+      pendingResetConfirm = false;
+      pendingVariableSkillId = null;
+      player = loadPlayer(activeSlot);
+      savePlayer();
+      render();
+      showNotice(`💾 세이브 슬롯 ${slotNum}번으로 전환했습니다.`);
+    }
+
+    function handleResetSlot() {
+      if (!pendingResetConfirm) {
+        pendingResetConfirm = true;
+        render();
+        return;
+      }
+      pendingResetConfirm = false;
+      actionQueue = [];
+      pendingVariableSkillId = null;
+      player = deepClone(DEFAULT_PLAYER);
+      savePlayer();
+      render();
+      showNotice(`🔄 세이브 슬롯 ${activeSlot}번이 초기 상태로 리셋되었습니다.`);
+    }
+
+    function renderAddSkillSubFields() {
+      const cat = document.getElementById('newSkillCat').value;
+      const box = document.getElementById('newSkillSubFields');
+      if (cat === 'phys' || cat === 'mag') {
+        box.innerHTML = `
+          <input type="number" step="0.1" id="newSkillCoeff" placeholder="계수 (기본 1)" min="0.1" />
+          <input type="number" id="newSkillMp" placeholder="소모 MP (기본 10)" min="0" />
+          <input type="number" id="newSkillCd" placeholder="쿨(턴)" min="0" style="width:74px; flex-shrink:0;" />
+        `;
       } else {
-        offerArea.innerHTML = '';
+        box.innerHTML = `
+          <input type="number" step="0.1" id="newSkillCoeff" placeholder="계수 (소모MP × 계수, 기본 1)" min="0.1" />
+          <input type="number" id="newSkillCd" placeholder="쿨(턴)" min="0" style="width:74px; flex-shrink:0;" />
+        `;
+      }
+    }
+
+    function renderAddItemSubFields() {
+      const cat = document.getElementById('newItemCat').value;
+      const box = document.getElementById('newItemSubFields');
+      if (cat === 'weapon') {
+        box.innerHTML = `
+          <select id="newWeaponType" style="width:92px; flex-shrink:0;">
+            <option value="공격력">공격력</option>
+            <option value="마력">마력</option>
+          </select>
+          <input type="number" id="newWeaponVal" placeholder="추가 수치 (+n)" min="0" />
+        `;
+      } else if (cat === 'armor') {
+        box.innerHTML = `
+          <input type="number" id="newArmorHp" placeholder="HP (+n)" min="0" />
+          <input type="number" id="newArmorDef" placeholder="방어력 (+n)" min="0" />
+        `;
+      } else if (cat === 'consumable') {
+        box.innerHTML = `
+          <select id="newConsType" style="width:105px; flex-shrink:0;">
+            <option value="hp">HP 회복</option>
+            <option value="mp">MP 회복</option>
+            <option value="both">HP/MP 회복</option>
+            <option value="none">특수/기타효과</option>
+          </select>
+          <input type="number" id="newConsVal" placeholder="회복량" min="0" />
+          <input type="number" id="newConsQty" placeholder="수량" value="1" min="1" style="width:62px; flex-shrink:0;" />
+        `;
+      } else {
+        box.innerHTML = `
+          <input type="number" id="newMiscQty" placeholder="수량 (기본 1)" value="1" min="1" />
+        `;
+      }
+    }
+
+    function queueNewItem() {
+      const { simPlayer } = getSimulatedState();
+      const cat = document.getElementById('newItemCat').value;
+      const name = document.getElementById('newItemName').value.trim();
+      const desc = document.getElementById('newItemDesc').value.trim();
+      if (!name) return;
+
+      let itemObj = null;
+      if (cat === 'consumable' || cat === 'misc') {
+        const qtyInput = document.getElementById(cat === 'consumable' ? 'newConsQty' : 'newMiscQty');
+        const addQty = Math.max(1, parseInt(qtyInput ? qtyInput.value : '1', 10) || 1);
+        const existing = simPlayer.inventory.find(it => it.cat === cat && it.name === name);
+        if (!existing && simPlayer.inventory.length >= MAX_INVEN_SLOTS) {
+          showNotice('⚠️ 인벤토리(10/10칸)가 가득 찼습니다.');
+          return;
+        }
+        if (cat === 'consumable') {
+          const effectType = document.getElementById('newConsType').value;
+          const val = Math.max(0, parseInt(document.getElementById('newConsVal').value, 10) || 0);
+          itemObj = {
+            cat: 'consumable',
+            name,
+            effectType,
+            val,
+            qty: addQty,
+            desc: desc || (effectType === 'none' ? '사용 가능한 소비 아이템' : `사용 시 ${effectType.toUpperCase()} +${val} 회복`)
+          };
+        } else {
+          itemObj = { cat: 'misc', name, qty: addQty, desc: desc || '소지 중인 기타 물품' };
+        }
+      } else {
+        if (simPlayer.inventory.length >= MAX_INVEN_SLOTS) {
+          showNotice('⚠️ 인벤토리(10/10칸)가 가득 찼습니다.');
+          return;
+        }
+        if (cat === 'weapon') {
+          const statType = document.getElementById('newWeaponType').value;
+          const val = Math.max(0, parseInt(document.getElementById('newWeaponVal').value, 10) || 0);
+          itemObj = { cat: 'weapon', name, statType, val, desc: desc || `${statType} +${val} 무기` };
+        } else {
+          const hp = Math.max(0, parseInt(document.getElementById('newArmorHp').value, 10) || 0);
+          const def = Math.max(0, parseInt(document.getElementById('newArmorDef').value, 10) || 0);
+          itemObj = { cat: 'armor', name, hp, def, desc: desc || `HP +${hp}, 방어력 +${def} 방어구` };
+        }
       }
 
+      document.getElementById('newItemName').value = '';
+      document.getElementById('newItemDesc').value = '';
+      renderAddItemSubFields();
+      pushAction({ type: 'add_item', item: itemObj });
+    }
+
+    function queueNewSkill() {
+      const { simPlayer } = getSimulatedState();
+      if (simPlayer.skills.length >= MAX_SKILL_SLOTS) {
+        showNotice('⚠️ 스킬슬롯(8/8칸)이 가득 찼습니다.');
+        return;
+      }
+      const cat = document.getElementById('newSkillCat').value;
+      const name = document.getElementById('newSkillName').value.trim();
+      if (!name) return;
+
+      const coeffRaw = document.getElementById('newSkillCoeff').value;
+      const mpEl = document.getElementById('newSkillMp');
+      const cdRaw = document.getElementById('newSkillCd').value;
+      const descInput = document.getElementById('newSkillDesc').value.trim();
+
+      const coeff = coeffRaw === '' ? 1 : Math.max(0.1, parseFloat(coeffRaw) || 1);
+      const isVariableMp = (cat === 'heal' || cat === 'def');
+      const mp = isVariableMp ? 0 : (mpEl && mpEl.value !== '' ? Math.max(0, parseInt(mpEl.value, 10) || 0) : 10);
+      const maxCd = cdRaw === '' ? 0 : Math.max(0, parseInt(cdRaw, 10) || 0);
+
+      const defaultEffects = {
+        phys: `(공격력 − 방어력) × ${coeff} 물리 피해`,
+        mag:  `(마력 − 방어력) × ${coeff} 마법 피해`,
+        def:  `소모 MP × ${coeff}만큼 방어력 적용 (사용 시 MP 선택)`,
+        heal: `소모 MP × ${coeff}만큼 HP 회복 (사용 시 MP 선택)`
+      };
+
+      const newSkill = {
+        id: 'sk_' + Date.now(),
+        name,
+        cat,
+        coeff,
+        mp,
+        cd: 0,
+        maxCd,
+        effect: defaultEffects[cat],
+        desc: descInput || '백지 상태창에서 각인한 고유 스킬'
+      };
+
+      document.getElementById('newSkillName').value = '';
+      document.getElementById('newSkillDesc').value = '';
+      renderAddSkillSubFields();
+
+      pushAction({ type: 'add_skill', skill: newSkill });
+    }
+
+    function queueDeleteSkill(skillId) {
+      if (pendingVariableSkillId === skillId) pendingVariableSkillId = null;
+      pushAction({ type: 'del_skill', skillId });
+    }
+
+    function queueGoldAdjust(sign) {
+      const input = document.getElementById('inputGoldDelta');
+      const amt = parseInt(input.value, 10);
+      if (!amt || amt <= 0) return;
+      input.value = '';
+      pushAction({ type: 'gold', delta: sign * amt });
+    }
+
+    function queueEquipFromInven(idx) {
+      pushAction({ type: 'equip_from_inven', idx });
+    }
+
+    function queueUseInvenItem(idx) {
+      pushAction({ type: 'use_item', idx });
+    }
+
+    function queueDiscardItem(idx) {
+      pushAction({ type: 'discard_item', idx });
+    }
+
+    function queueCustomEquip(slotKey) {
+      const nameInput = document.getElementById(`input-${slotKey}-name`);
+      const effectInput = document.getElementById(`input-${slotKey}-effect`);
+      const name = (nameInput ? nameInput.value : '').trim();
+      const effect = (effectInput ? effectInput.value : '').trim();
+      if (!name) return;
+      pushAction({ type: 'custom_equip', slotKey, name, effect: effect || '특수 효과 없음' });
+    }
+
+    function queueUnequipSlot(slotKey) {
+      const { simPlayer } = getSimulatedState();
+      if ((slotKey === 'weapon' || slotKey === 'armor') && simPlayer.inventory.length >= MAX_INVEN_SLOTS) {
+        showNotice('⚠️ 인벤토리(10/10칸)가 가득 차서 해제할 수 없습니다.');
+        return;
+      }
+      pushAction({ type: 'unequip', slotKey });
+    }
+
+    function useSkill(skillId) {
+      const { simPlayer } = getSimulatedState();
+      const sk = simPlayer.skills.find(s => s.id === skillId);
+      if (!sk || sk.cd > 0) return;
+
+      if (sk.cat === 'heal' || sk.cat === 'def') {
+        if (simPlayer.mp <= 0) {
+          showNotice('⚠️ 예상 잔여 MP가 0이라 발동할 수 없습니다.');
+          return;
+        }
+        pendingVariableSkillId = (pendingVariableSkillId === skillId) ? null : skillId;
+        render();
+        if (pendingVariableSkillId) {
+          const inp = document.getElementById('inputSpendMp');
+          inp.value = Math.min(10, simPlayer.mp);
+          updateMpSpendPreview();
+          inp.focus();
+        }
+        return;
+      }
+
+      if (simPlayer.mp < sk.mp) return;
+      pendingVariableSkillId = null;
+
+      pushAction({
+        type: 'skill',
+        skillId: sk.id,
+        name: sk.name,
+        cat: sk.cat,
+        coeff: sk.coeff,
+        spendMp: sk.mp
+      });
+    }
+
+    function setQuickMp(val) {
+      const { simPlayer } = getSimulatedState();
+      const inp = document.getElementById('inputSpendMp');
+      inp.value = Math.min(val, simPlayer.mp);
+      updateMpSpendPreview();
+    }
+
+    function updateMpSpendPreview() {
+      const { simPlayer } = getSimulatedState();
+      const sk = simPlayer.skills.find(s => s.id === pendingVariableSkillId);
+      if (!sk) return;
+      const raw = parseInt(document.getElementById('inputSpendMp').value, 10) || 0;
+      const validMp = Math.max(0, Math.min(raw, simPlayer.mp));
+      const calcVal = Math.floor(validMp * (Number(sk.coeff) || 1));
+      const label = sk.cat === 'heal' ? `HP +${calcVal} 회복` : `방어력 +${calcVal}`;
+      document.getElementById('mpSpendPreview').textContent = `예상: ${label}`;
+    }
+
+    function closeMpSpendBox() {
+      pendingVariableSkillId = null;
+      render();
+    }
+
+    function confirmVariableSkill() {
+      const { simPlayer } = getSimulatedState();
+      const sk = simPlayer.skills.find(s => s.id === pendingVariableSkillId);
+      if (!sk) return;
+
+      const raw = parseInt(document.getElementById('inputSpendMp').value, 10);
+      if (!raw || raw <= 0) {
+        showNotice('⚠️ 소모할 MP를 1 이상 입력해 주세요.');
+        return;
+      }
+      if (raw > simPlayer.mp) {
+        showNotice(`⚠️ 예상 잔여 MP(${simPlayer.mp})보다 많이 소모할 수 없습니다.`);
+        return;
+      }
+
+      pendingVariableSkillId = null;
+      pushAction({
+        type: 'skill',
+        skillId: sk.id,
+        name: sk.name,
+        cat: sk.cat,
+        coeff: sk.coeff,
+        spendMp: raw
+      });
+    }
+
+    function queueMoveRoute(dest) {
+      pendingVariableSkillId = null;
+      pushAction({ type: 'move', dest });
+    }
+
+    function queueOfferDecision(decision) {
+      if (!turnData.offer) return;
+      pushAction({
+        type: 'offer',
+        decision,
+        from: turnData.offer.from,
+        offerType: turnData.offer.type,
+        title: turnData.offer.title
+      });
+    }
+
+    function showNotice(msg) {
+      const toast = document.getElementById('toastBox');
+      toast.style.display = 'block';
+      toast.innerHTML = escapeHtml(msg);
+    }
+
+    function renderEquipSlots(simPlayer) {
+      const eq = simPlayer.equipment;
+      const slots = [
+        { key: 'weapon', label: '⚔️ 무기', item: eq.weapon },
+        { key: 'armor', label: '🧥 방어구', item: eq.armor },
+        { key: 'acc', label: '💍 장신구', item: eq.acc },
+        { key: 'special', label: '✨ 특수슬롯', item: eq.special }
+      ];
+
+      document.getElementById('equipSlotList').innerHTML = slots.map(s => {
+        const isOpen = expandedEquipSlot === s.key;
+        const titleHtml = s.item
+          ? `<span>${escapeHtml(s.item.name)}</span>`
+          : `<span class="slot-empty">비어 있음</span>`;
+
+        let detailHtml = '';
+        if (s.key === 'weapon') {
+          if (s.item) {
+            const statType = s.item.statType || '공격력';
+            detailHtml = `
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="stat-pill">${escapeHtml(statType)} +${Number(s.item.val) || 0}</span>
+                <button class="mini-btn danger" onclick="queueUnequipSlot('weapon')">해제</button>
+              </div>
+              ${s.item.desc ? `<div style="color:#94a3b8; font-size:11px;">${escapeHtml(s.item.desc)}</div>` : ''}
+            `;
+          } else {
+            detailHtml = `<div style="color:#64748b; font-size:11px;">장착된 무기가 없습니다. (능력치: 공격력 / 마력 +0)</div>`;
+          }
+        } else if (s.key === 'armor') {
+          if (s.item) {
+            const badges = [];
+            if (Number(s.item.hp) > 0) badges.push(`<span class="stat-pill">HP +${Number(s.item.hp)}</span>`);
+            if (Number(s.item.def) > 0) badges.push(`<span class="stat-pill">방어력 +${Number(s.item.def)}</span>`);
+            if (badges.length === 0) badges.push(`<span class="stat-pill">방어력 +0</span>`);
+            detailHtml = `
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
+                <div style="display:flex; flex-wrap:wrap; gap:4px;">${badges.join('')}</div>
+                <button class="mini-btn danger" onclick="queueUnequipSlot('armor')">해제</button>
+              </div>
+              ${s.item.desc ? `<div style="color:#94a3b8; font-size:11px;">${escapeHtml(s.item.desc)}</div>` : ''}
+            `;
+          } else {
+            detailHtml = `<div style="color:#64748b; font-size:11px;">장착된 방어구가 없습니다. (능력치: HP +0 / 방어력 +0)</div>`;
+          }
+        } else if (s.key === 'acc' || s.key === 'special') {
+          const isAcc = s.key === 'acc';
+          const namePlaceholder = isAcc ? '장신구 이름 입력 (예: 마력의 반지)' : '특수슬롯 명칭 (예: 사역마, 고대 마도서, 칭호)';
+          const effectPlaceholder = isAcc ? '능력치 · 효과 입력 (예: 마력 +10)' : '자유 설정 및 효과 입력';
+          const btnText = isAcc ? '착용' : '등록';
+
+          detailHtml = `
+            ${s.item ? `
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; background:#191d2b; padding:6px 8px; border-radius:6px;">
+                <div>
+                  <div style="font-weight:700; color:#e2e8f0;">${escapeHtml(s.item.name)}</div>
+                  <div style="color:#a5b4fc; font-size:11px;">${escapeHtml(s.item.effect)}</div>
+                </div>
+                <button class="mini-btn danger" onclick="queueUnequipSlot('${s.key}')">해제</button>
+              </div>
+            ` : ''}
+            <div class="input-row">
+              <input id="input-${s.key}-name" placeholder="${namePlaceholder}" value="${s.item ? escapeHtml(s.item.name) : ''}" />
+              <div class="input-inline">
+                <input id="input-${s.key}-effect" placeholder="${effectPlaceholder}" value="${s.item ? escapeHtml(s.item.effect) : ''}" />
+                <button class="mini-btn primary" onclick="queueCustomEquip('${s.key}')">${btnText}</button>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="equip-card ${isOpen ? 'expanded' : ''}">
+            <div class="equip-header" onclick="toggleEquipSlot('${s.key}')">
+              <span class="slot-label">${s.label}</span>
+              <span class="slot-value">${titleHtml} <span style="color:#64748b; font-size:10px;">${isOpen ? '▴' : '▾'}</span></span>
+            </div>
+            <div class="equip-detail">${detailHtml}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderInventory(simPlayer) {
+      const list = simPlayer.inventory || [];
+      document.getElementById('inven-capacity').textContent = `${list.length} / ${MAX_INVEN_SLOTS}칸`;
+      document.getElementById('inven-gold').textContent = `💰 ${simPlayer.gold} G`;
+
+      const container = document.getElementById('invenList');
+      if (list.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#64748b; font-size:12px; padding:12px 0;">보유 중인 아이템이 없습니다.</div>`;
+        return;
+      }
+
+      container.innerHTML = list.map((item, idx) => {
+        let badgeHtml = '';
+        let actionBtnHtml = '';
+
+        if (item.cat === 'weapon') {
+          badgeHtml = `<span class="stat-pill">${escapeHtml(item.statType || '공격력')} +${Number(item.val) || 0}</span>`;
+          actionBtnHtml = `<button class="mini-btn primary" onclick="queueEquipFromInven(${idx})">장착</button>`;
+        } else if (item.cat === 'armor') {
+          const parts = [];
+          if (Number(item.hp) > 0) parts.push(`HP +${Number(item.hp)}`);
+          if (Number(item.def) > 0) parts.push(`방어 +${Number(item.def)}`);
+          badgeHtml = `<span class="stat-pill">${parts.length ? parts.join(' · ') : '방어 +0'}</span>`;
+          actionBtnHtml = `<button class="mini-btn primary" onclick="queueEquipFromInven(${idx})">장착</button>`;
+        } else if (item.cat === 'consumable') {
+          const effMap = { hp: `HP +${item.val}`, mp: `MP +${item.val}`, both: `HP/MP +${item.val}`, none: '소비' };
+          badgeHtml = `<span class="stat-pill green">${effMap[item.effectType] || '소비'}</span>`;
+          actionBtnHtml = `<button class="mini-btn success" onclick="queueUseInvenItem(${idx})">사용</button>`;
+        } else {
+          badgeHtml = `<span class="stat-pill gray">기타</span>`;
+        }
+
+        const qtyText = (item.cat === 'consumable' || item.cat === 'misc') && (item.qty || 1) > 1
+          ? ` <span style="color:#fbbf24;">×${item.qty}</span>`
+          : '';
+
+        return `
+          <div class="list-card">
+            <div class="list-card-top">
+              <div class="list-title-wrap">
+                <span>${escapeHtml(item.name)}${qtyText}</span>
+                ${badgeHtml}
+              </div>
+              <div class="list-btns">
+                ${actionBtnHtml}
+                <button class="mini-btn danger" onclick="queueDiscardItem(${idx})">버리기</button>
+              </div>
+            </div>
+            <div class="list-desc">${escapeHtml(item.desc || '설명 없음')}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderSkillsDrawer(simPlayer) {
+      const skills = simPlayer.skills || [];
+      document.getElementById('skill-capacity').textContent = `${skills.length} / ${MAX_SKILL_SLOTS}칸`;
+
+      const container = document.getElementById('skillList');
+      if (skills.length === 0) {
+        container.innerHTML = `<div style="text-align:center; color:#64748b; font-size:12px; padding:12px 0;">보유 중인 스킬이 없습니다. 위 창에서 새 스킬을 각인해 보세요.</div>`;
+        return;
+      }
+
+      container.innerHTML = skills.map(sk => {
+        const meta = SKILL_CAT_META[sk.cat] || SKILL_CAT_META.phys;
+        const isVarMp = (sk.cat === 'heal' || sk.cat === 'def');
+        const mpText = isVarMp ? '가변MP' : `MP ${sk.mp}`;
+        const costInfo = sk.maxCd > 0 ? `계수 ×${sk.coeff} · ${mpText} · 쿨 ${sk.maxCd}턴` : `계수 ×${sk.coeff} · ${mpText}`;
+
+        return `
+          <div class="list-card">
+            <div class="list-card-top">
+              <div class="list-title-wrap">
+                <span>${escapeHtml(sk.name)}</span>
+                <span class="stat-pill ${meta.pillClass}">${meta.label}</span>
+                <span style="font-size:10px; color:#94a3b8; font-weight:600;">${costInfo}</span>
+              </div>
+              <div class="list-btns">
+                <button class="mini-btn danger" onclick="queueDeleteSkill('${sk.id}')">삭제</button>
+              </div>
+            </div>
+            <div class="list-effect">효과: ${escapeHtml(sk.effect)}</div>
+            <div class="list-desc">${escapeHtml(sk.desc)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTrainDrawer() {
+      document.getElementById('trainBtnGrid').innerHTML = TRAIN_LIST.map(t => `
+        <button class="train-btn" onclick="startTraining('${t.id}')">
+          <span class="train-btn-name">${t.name}</span>
+          <span class="train-btn-stat">${t.statLabel}</span>
+        </button>
+      `).join('');
+    }
+
+    function renderStatsDrawer(simPlayer) {
+      const ap = Number(simPlayer.ap) || 0;
+      document.getElementById('stat-lv').textContent = `📊 LV.${simPlayer.lv} · ${simPlayer.job || '미설정'}`;
+      document.getElementById('stat-ap').textContent = `잔여 포인트: ${ap}`;
+
+      document.getElementById('sumAtk').textContent = calcAtk(simPlayer);
+      document.getElementById('sumMag').textContent = calcMag(simPlayer);
+      document.getElementById('sumDef').textContent = calcDef(simPlayer);
+
+      document.getElementById('statRowsList').innerHTML = STAT_META.map(m => {
+        const val = Number(simPlayer.stats[m.key]) || 0;
+        return `
+          <div class="stat-row-card">
+            <div class="stat-info">
+              <span class="stat-name">${m.label}</span>
+              <span class="stat-sub">${m.effectDesc}</span>
+            </div>
+            <div class="stat-actions">
+              <span class="stat-val-badge">${val}</span>
+              <button class="mini-btn primary" ${ap <= 0 ? 'disabled' : ''} onclick="queueStatAp('${m.key}')">+AP</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const statusBox = document.getElementById('drawerStatusBadges');
+      if (simPlayer.statuses && simPlayer.statuses.length > 0) {
+        statusBox.innerHTML = simPlayer.statuses.map((st, idx) => `
+          <span class="condition-badge">
+            ${escapeHtml(st)}
+            <span style="cursor:pointer; color:#fca5a5; font-weight:800;" onclick="queueRemoveStatus(${idx})">×</span>
+          </span>
+        `).join('');
+      } else {
+        statusBox.innerHTML = `<span style="font-size:11px; color:#64748b;">적용 중인 특이사항 없음</span>`;
+      }
+
+      [1, 2, 3].forEach(n => {
+        const btn = document.getElementById(`slotBtn${n}`);
+        if (btn) btn.className = 'mini-btn' + (activeSlot === n ? ' primary' : '');
+      });
+
+      const resetBtn = document.getElementById('btnResetSlot');
+      if (resetBtn) {
+        resetBtn.className = 'mini-btn ' + (pendingResetConfirm ? 'warn' : 'danger');
+        resetBtn.textContent = pendingResetConfirm ? '확인' : '초기화';
+      }
+    }
+
+    function renderActionQueue(renderedLogs) {
+      const count = renderedLogs.length;
+      document.getElementById('queueCount').textContent = count;
+
+      const copyBtn = document.getElementById('btnCopyAll');
+      copyBtn.disabled = count === 0;
+      copyBtn.textContent = count > 0
+        ? `📋 누적 내용 일괄 복사 (${count}건)`
+        : `📋 누적 내용 일괄 복사 (0건)`;
+
+      const listEl = document.getElementById('queueList');
+      if (count === 0) {
+        listEl.innerHTML = `<div class="queue-empty">위 메뉴나 버튼을 누르면 행동 및 변화 내역이 이곳에 누적됩니다.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = renderedLogs.map((txt, idx) => `
+        <div class="queue-item">
+          <span class="queue-item-text"><b>${idx + 1}.</b> ${escapeHtml(txt)}</span>
+          <button class="queue-del-btn" onclick="removeQueuedAction(${idx})" title="이 항목 취소">×</button>
+        </div>
+      `).join('');
+    }
+
+    function render() {
+      const { simPlayer, simEnemy, renderedLogs } = getSimulatedState();
+
+      ['equip', 'inven', 'skills', 'train', 'stats'].forEach(key => {
+        document.getElementById(`btn-${key}`).classList.toggle('active', activeDrawer === key);
+        document.getElementById(`drawer-${key}`).classList.toggle('open', activeDrawer === key);
+      });
+
+      renderEquipSlots(simPlayer);
+      renderInventory(simPlayer);
+      renderSkillsDrawer(simPlayer);
+      renderTrainDrawer();
+      renderStatsDrawer(simPlayer);
+      renderActionQueue(renderedLogs);
+
+      const effMaxHp = calcMaxHp(simPlayer);
+      const effMaxMp = calcMaxMp(simPlayer);
+      const hpPct = Math.max(0, Math.min(100, (simPlayer.hp / effMaxHp) * 100));
+      const mpPct = Math.max(0, Math.min(100, (simPlayer.mp / effMaxMp) * 100));
+      const expPct = Math.max(0, Math.min(100, (simPlayer.exp / simPlayer.maxExp) * 100));
+
+      document.getElementById('displayUserName').textContent = simPlayer.name || '모험가';
+      document.getElementById('hpText').textContent = `${simPlayer.hp}/${effMaxHp}`;
+      document.getElementById('mpText').textContent = `${simPlayer.mp}/${effMaxMp}`;
+      document.getElementById('expText').textContent = `${simPlayer.exp}/${simPlayer.maxExp}`;
+      document.getElementById('hpBar').style.width = `${hpPct}%`;
+      document.getElementById('mpBar').style.width = `${mpPct}%`;
+      document.getElementById('expBar').style.width = `${expPct}%`;
+
+      const condRow = document.getElementById('conditionRow');
+      const condList = document.getElementById('conditionList');
+      if (simPlayer.statuses && simPlayer.statuses.length > 0) {
+        condRow.style.display = 'flex';
+        condList.innerHTML = simPlayer.statuses
+          .map(st => `<span class="condition-badge">${escapeHtml(st)}</span>`)
+          .join('');
+      } else {
+        condRow.style.display = 'none';
+        condList.innerHTML = '';
+      }
+
+      document.getElementById('metaLoc').textContent = `📍 ${turnData.loc} · T${turnData.turn}`;
+      document.getElementById('metaGold').textContent = `💰 ${simPlayer.gold}G`;
+
+      const offerArea = document.getElementById('offerArea');
+      offerArea.innerHTML = turnData.offer ? `
+        <div class="offer-box">
+          <div style="font-weight:700; color:#fbbf24;">[${escapeHtml(turnData.offer.type)}] ${escapeHtml(turnData.offer.title)} (${escapeHtml(turnData.offer.from)})</div>
+          <div style="margin:4px 0; font-size:12px;">${escapeHtml(turnData.offer.desc)}</div>
+          <div class="grid-2" style="margin-top:6px;">
+            <button class="action-btn btn-yes" onclick="queueOfferDecision('수락')">[수락 담기]</button>
+            <button class="action-btn btn-no" onclick="queueOfferDecision('거절')">[거절 담기]</button>
+          </div>
+        </div>` : '';
+
       const enemyArea = document.getElementById('enemyArea');
-      if (turnData.enemy) {
+      if (simEnemy) {
+        const countTag = simEnemy.count > 1 ? ` ×${simEnemy.count}` : '';
+        const eStatText = simEnemy.def > 0 ? `HP ${simEnemy.hp}/${simEnemy.maxHp} (방 ${simEnemy.def})` : `HP ${simEnemy.hp}/${simEnemy.maxHp}`;
         enemyArea.innerHTML = `
           <div class="enemy-box">
-            <span>[적] ${turnData.enemy.name}</span>
-            <span>HP ${turnData.enemy.hp} / ${turnData.enemy.maxHp}</span>
+            <span>[적] ${escapeHtml(simEnemy.name)}${countTag}</span>
+            <span>${eStatText}</span>
           </div>`;
       } else {
         enemyArea.innerHTML = '';
       }
 
-      document.getElementById('skillArea').innerHTML = player.skills
-        .filter(s => s.unlocked)
-        .map(s => {
-          const disabled = s.cd > 0 || player.mp < s.mp;
-          const label = s.cd > 0 ? `(쿨 ${s.cd}턴)` : `(MP ${s.mp} · ${s.chance}%)`;
-          return `<button class="${s.type === 'heal' ? 'btn-heal' : 'btn-atk'}" ${disabled ? 'disabled' : ''} onclick="useSkill('${s.id}')">
-            ${s.name} ${label}
-          </button>`;
-        }).join('');
+      document.getElementById('skillArea').innerHTML = simPlayer.skills.map(s => {
+        const meta = SKILL_CAT_META[s.cat] || SKILL_CAT_META.phys;
+        const isVarMp = (s.cat === 'heal' || s.cat === 'def');
+        const disabled = s.cd > 0 || (isVarMp ? simPlayer.mp <= 0 : simPlayer.mp < s.mp);
+        const label = s.cd > 0
+          ? `(쿨 ${s.cd}턴)`
+          : (isVarMp ? `(×${s.coeff} · MP선택)` : `(×${s.coeff} · MP ${s.mp})`);
+        return `<button class="action-btn ${meta.btnClass}" ${disabled ? 'disabled' : ''} onclick="useSkill('${s.id}')">${escapeHtml(s.name)} ${label}</button>`;
+      }).join('');
 
-      const cWrap = document.getElementById('choiceWrapper');
-      if (turnData.choices && turnData.choices.length > 0) {
-        cWrap.style.display = 'block';
-        document.getElementById('choiceArea').innerHTML = turnData.choices
-          .map(c => `<button onclick="sendToChat('[행동] ${c.replace(/'/g, "\\'")}')">▸ ${c}</button>`)
-          .join('');
+      const mpBox = document.getElementById('mpSpendBox');
+      const activeVarSk = simPlayer.skills.find(s => s.id === pendingVariableSkillId);
+      if (activeVarSk) {
+        mpBox.classList.add('open');
+        document.getElementById('mpSpendTitle').textContent = `💧 '${activeVarSk.name}' 소모 MP (계수 ×${activeVarSk.coeff} | 잔여 ${simPlayer.mp})`;
       } else {
-        cWrap.style.display = 'none';
+        mpBox.classList.remove('open');
       }
 
       const rWrap = document.getElementById('routeWrapper');
       if (turnData.routes && turnData.routes.length > 0) {
         rWrap.style.display = 'block';
         document.getElementById('routeArea').innerHTML = turnData.routes
-          .map(r => `<button class="btn-move" onclick="moveRoute('${r.replace(/'/g, "\\'")}')">→ ${r}</button>`)
+          .map(r => `<button class="action-btn btn-move" onclick="queueMoveRoute('${r.replace(/'/g, "\\'")}')">→ ${escapeHtml(r)}</button>`)
           .join('');
       } else {
         rWrap.style.display = 'none';
       }
     }
 
+    // 초기 실행: 자율 입력 서브필드 초기화 + URL 동기화 + 렌더링
+    renderAddItemSubFields();
+    renderAddSkillSubFields();
     parseIncomingData();
     render();
+    if (incomingAlert) {
+      showNotice(incomingAlert);
+    }
   </script>
 </body>
 </html>
