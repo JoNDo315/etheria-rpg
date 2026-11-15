@@ -446,6 +446,9 @@
       font-size: 11px;
       font-weight: 700;
       color: #94a3b8;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .slot-bar {
       display: flex;
@@ -908,7 +911,7 @@
       <div class="sub-date-row" id="metaDateTime">📅 2026년 4월 6일 월요일 · 14:00</div>
       <div class="sub-meta-row">
         <span style="color:#e2e8f0;" id="metaLoc">📍 시작의 광장 · T1</span>
-        <span style="color:#fbbf24;" id="metaGold">💰 100G</span>
+        <span style="color:#fbbf24;" id="metaGold">💰 0G</span>
       </div>
     </div>
 
@@ -930,7 +933,7 @@
 
       <!-- 재화 관리 바 -->
       <div class="gold-bar">
-        <span class="gold-amount" id="inven-gold">💰 100 G</span>
+        <span class="gold-amount" id="inven-gold">💰 0 G</span>
         <div class="gold-controls">
           <input type="number" id="inputGoldDelta" placeholder="금액" min="1" />
           <button class="mini-btn success" onclick="queueGoldAdjust(1)">+수입</button>
@@ -1045,6 +1048,10 @@
       </div>
 
       <div class="sub-section-box">
+        <div class="sub-section-label">
+          <span>💾 페르소나별 세이브 슬롯</span>
+          <span id="personaProfileTag" style="color:#a5b4fc; font-size:10px;">프로필: 기본</span>
+        </div>
         <div class="slot-bar">
           <div class="slot-btns">
             <button class="mini-btn" id="slotBtn1" onclick="switchSaveSlot(1)">슬롯 1</button>
@@ -1104,9 +1111,26 @@
   </div>
 
   <script>
-    const SLOT_INDEX_KEY = 'etheria_rpg_active_slot';
-    const STORAGE_PREFIX = 'etheria_rpg_v3_slot_';
-    const LEGACY_STORAGE_KEY = 'etheria_rpg_v2_slot_1';
+    function cleanStr(s) {
+      return (s || '').replace(/_/g, ' ').trim();
+    }
+
+    // URL로 전달된 페르소나({user}) 기준으로 저장 공간을 자동 분리하여 페르소나 간 데이터 충돌 원천 차단
+    function getPersonaNamespace() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const rawUser = params.get('user') || params.get('name');
+        const cleaned = cleanStr(rawUser);
+        if (cleaned && cleaned !== '{user}' && cleaned !== '{{user}}') {
+          return cleaned;
+        }
+      } catch {}
+      return 'default';
+    }
+
+    const PERSONA_NS = getPersonaNamespace();
+    const SLOT_INDEX_KEY = `etheria_rpg_v3_${PERSONA_NS}_active_slot`;
+    const STORAGE_PREFIX = `etheria_rpg_v3_${PERSONA_NS}_slot_`;
     const MAX_INVEN_SLOTS = 10;
     const MAX_SKILL_SLOTS = 8;
 
@@ -1134,14 +1158,15 @@
     ];
 
     const DEFAULT_PLAYER = {
-      name: '모험가',
+      name: PERSONA_NS !== 'default' ? PERSONA_NS : '모험가',
+      customName: false,
       job: '미설정',
       lv: 1,
       exp: 0, maxExp: 100,
       ap: 0,
       hp: 100, maxHp: 100,
       mp: 50, maxMp: 50,
-      gold: 100,
+      gold: 0,
       baseAtk: 10,
       baseMag: 10,
       baseDef: 0,
@@ -1213,10 +1238,6 @@
     let isEditingName = false;
     let incomingAlert = '';
 
-    function cleanStr(s) {
-      return (s || '').replace(/_/g, ' ').trim();
-    }
-
     function escapeHtml(str) {
       return String(str || '')
         .replace(/&/g, '&amp;')
@@ -1260,10 +1281,7 @@
 
     function loadPlayer(slotNum) {
       try {
-        let raw = localStorage.getItem(STORAGE_PREFIX + slotNum);
-        if (!raw && slotNum === 1) {
-          raw = localStorage.getItem(LEGACY_STORAGE_KEY);
-        }
+        const raw = localStorage.getItem(STORAGE_PREFIX + slotNum);
         if (!raw) return deepClone(DEFAULT_PLAYER);
         const parsed = JSON.parse(raw);
         const rawSkills = Array.isArray(parsed.skills) ? parsed.skills : DEFAULT_PLAYER.skills;
@@ -1332,7 +1350,6 @@
       return (Number(p.maxMp) || 50) + statBonus;
     }
 
-    // 회복 아이템 설명문 기반 HP/MP 판별
     function detectHealTarget(item) {
       if (item.effectType === 'mp') return 'mp';
       if (item.effectType === 'both') return 'both';
@@ -1550,9 +1567,14 @@
       if (params.get('loc')) turnData.loc = cleanStr(params.get('loc'));
       if (params.get('routes')) turnData.routes = params.get('routes').split(',').map(cleanStr).filter(Boolean);
 
-      const incomingUser = params.get('user') || params.get('name');
-      if (incomingUser && incomingUser !== '{user}' && incomingUser !== '{{user}}') {
-        player.name = cleanStr(incomingUser);
+      // 같은 페르소나·슬롯에서 새 채팅(turn=1) 시작 시 이전 채팅(turn > 1) 잔여 데이터 자동 초기화
+      if (turnData.turn === 1 && (Number(player.lastSyncedTurn) || 0) > 1) {
+        player = deepClone(DEFAULT_PLAYER);
+        incomingAlert = '🆕 새 모험(T1)이 시작되어 상태창이 초기화되었습니다.';
+      }
+
+      if (PERSONA_NS !== 'default' && !player.customName) {
+        player.name = PERSONA_NS;
       }
 
       const offerRaw = params.get('offer');
@@ -1580,10 +1602,9 @@
 
         if (params.get('job')) player.job = cleanStr(params.get('job'));
         if (params.get('lv')) player.lv = Math.max(1, parseInt(params.get('lv'), 10) || player.lv);
-        if (params.get('gold')) player.gold = Math.max(0, parseInt(params.get('gold'), 10));
-        if (params.get('ap')) player.ap = Math.max(0, parseInt(params.get('ap'), 10));
+        if (params.get('gold') !== null) player.gold = Math.max(0, parseInt(params.get('gold'), 10) || 0);
+        if (params.get('ap') !== null) player.ap = Math.max(0, parseInt(params.get('ap'), 10) || 0);
 
-        // 스탯 동기화: URLSearchParams가 '+'를 공백으로 바꾸는 현상까지 모두 대응
         const statRaw = params.get('stat');
         if (statRaw && statRaw !== 'none' && statRaw !== 'null') {
           const keyMap = { '근력': 'str', '지능': 'int', '근골': 'con', '체력': 'vit', '정신': 'mnd', str: 'str', int: 'int', con: 'con', vit: 'vit', mnd: 'mnd' };
@@ -1632,7 +1653,6 @@
           });
         }
 
-        // 인벤토리 동기화: URLSearchParams가 '+'를 공백으로 변환하는 경우 및 추가/삭제 접두어 모두 처리
         const invenRaw = params.get('inven');
         if (invenRaw && invenRaw !== 'none' && invenRaw !== 'null') {
           invenRaw.split(',').forEach(rawEntry => {
@@ -1713,7 +1733,6 @@
           });
         }
 
-        // 스킬 동기화: URLSearchParams가 '+'를 공백으로 변환하는 경우 및 추가/삭제 접두어 모두 처리
         const skillRaw = params.get('skill');
         if (skillRaw && skillRaw !== 'none' && skillRaw !== 'null') {
           const catMap = { '물리': 'phys', '마법': 'mag', '방어': 'def', '회복': 'heal' };
@@ -1858,6 +1877,7 @@
       const val = document.getElementById('inputUserName').value.trim();
       if (val) {
         player.name = val;
+        player.customName = true;
         savePlayer();
       }
       toggleNameEdit(false);
@@ -1918,9 +1938,12 @@
       pendingResetConfirm = false;
       pendingVariableSkillId = null;
       player = loadPlayer(activeSlot);
+      if (PERSONA_NS !== 'default' && !player.customName) {
+        player.name = PERSONA_NS;
+      }
       savePlayer();
       render();
-      showNotice(`💾 세이브 슬롯 ${slotNum}번으로 전환했습니다.`);
+      showNotice(`💾 [${PERSONA_NS === 'default' ? '기본' : PERSONA_NS}] 슬롯 ${slotNum}번으로 전환했습니다.`);
     }
 
     function handleResetSlot() {
@@ -1935,7 +1958,7 @@
       player = deepClone(DEFAULT_PLAYER);
       savePlayer();
       render();
-      showNotice(`🔄 세이브 슬롯 ${activeSlot}번이 초기 상태로 리셋되었습니다.`);
+      showNotice(`🔄 [${PERSONA_NS === 'default' ? '기본' : PERSONA_NS}] 슬롯 ${activeSlot}번이 초기 상태로 리셋되었습니다.`);
     }
 
     function renderAddSkillSubFields() {
@@ -1955,7 +1978,6 @@
       }
     }
 
-    // 5대 아이템 분류(무기 / 방어구 / 장신구 / 회복 / 기타 및 특수)에 맞춘 간편 입력칸
     function renderAddItemSubFields() {
       const cat = document.getElementById('newItemCat').value;
       const box = document.getElementById('newItemSubFields');
@@ -2457,6 +2479,12 @@
         `).join('');
       } else {
         statusBox.innerHTML = `<span style="font-size:11px; color:#64748b;">적용 중인 특이사항 없음</span>`;
+      }
+
+      const profileTag = document.getElementById('personaProfileTag');
+      if (profileTag) {
+        const label = PERSONA_NS === 'default' ? '기본' : PERSONA_NS;
+        profileTag.textContent = `프로필: ${label} · 슬롯 ${activeSlot}`;
       }
 
       [1, 2, 3].forEach(n => {
