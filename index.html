@@ -1583,6 +1583,7 @@
         if (params.get('gold')) player.gold = Math.max(0, parseInt(params.get('gold'), 10));
         if (params.get('ap')) player.ap = Math.max(0, parseInt(params.get('ap'), 10));
 
+        // 스탯 동기화: URLSearchParams가 '+'를 공백으로 바꾸는 현상까지 모두 대응
         const statRaw = params.get('stat');
         if (statRaw && statRaw !== 'none' && statRaw !== 'null') {
           const keyMap = { '근력': 'str', '지능': 'int', '근골': 'con', '체력': 'vit', '정신': 'mnd', str: 'str', int: 'int', con: 'con', vit: 'vit', mnd: 'mnd' };
@@ -1590,7 +1591,7 @@
           statRaw.split(',').forEach(part => {
             const clean = cleanStr(part);
             const absMatch = clean.match(/^(근력|지능|근골|체력|정신|str|int|con|vit|mnd)\s*:\s*(\d+)$/i);
-            const relMatch = clean.match(/^(근력|지능|근골|체력|정신|str|int|con|vit|mnd)\s*([+-])\s*(\d+)$/i);
+            const relMatch = clean.match(/^(근력|지능|근골|체력|정신|str|int|con|vit|mnd)\s*([+-]?)\s*(\d+)$/i);
             if (absMatch) {
               const k = keyMap[absMatch[1].toLowerCase()] || keyMap[absMatch[1]];
               if (k) player.stats[k] = Math.max(0, parseInt(absMatch[2], 10) || 0);
@@ -1620,30 +1621,50 @@
               const map = { '무기': 'weapon', '방어구': 'armor', '장신구': 'acc', '특수슬롯': 'special' };
               if (map[parts[1]]) player.equipment[map[parts[1]]] = null;
             } else if (parts[0] === '무기' && parts[1]) {
-              player.equipment.weapon = { name: parts[1], statType: parts[2] || '공격력', val: parseInt(parts[3], 10) || 0, desc: parts[4] || '' };
+              player.equipment.weapon = { name: parts[1], statType: parts[2] || '공격력', val: parseInt(parts[3], 10) || 0, desc: parts.slice(4).join(':') || '' };
             } else if (parts[0] === '방어구' && parts[1]) {
-              player.equipment.armor = { name: parts[1], hp: parseInt(parts[2], 10) || 0, def: parseInt(parts[3], 10) || 0, desc: parts[4] || '' };
+              player.equipment.armor = { name: parts[1], hp: parseInt(parts[2], 10) || 0, def: parseInt(parts[3], 10) || 0, desc: parts.slice(4).join(':') || '' };
             } else if (parts[0] === '장신구' && parts[1]) {
-              player.equipment.acc = { name: parts[1], effect: parts[2] || '특수 효과' };
+              player.equipment.acc = { name: parts[1], effect: parts.slice(2).join(':') || '특수 효과' };
             } else if (parts[0] === '특수슬롯' && parts[1]) {
-              player.equipment.special = { name: parts[1], effect: parts[2] || '특수 효과' };
+              player.equipment.special = { name: parts[1], effect: parts.slice(2).join(':') || '특수 효과' };
             }
           });
         }
 
-        // 인벤토리 동기화 (신규 5분류: 무기/방어구/장신구/회복/기타 및 기존 호환)
+        // 인벤토리 동기화: URLSearchParams가 '+'를 공백으로 변환하는 경우 및 추가/삭제 접두어 모두 처리
         const invenRaw = params.get('inven');
         if (invenRaw && invenRaw !== 'none' && invenRaw !== 'null') {
-          invenRaw.split(',').forEach(entry => {
-            const op = entry[0];
-            const parts = entry.slice(1).split(':').map(cleanStr);
+          invenRaw.split(',').forEach(rawEntry => {
+            if (!rawEntry) return;
+            const trimmed = rawEntry.trim();
+            if (!trimmed) return;
+
+            let op = '+';
+            let body = trimmed;
+            if (trimmed.startsWith('-')) {
+              op = '-';
+              body = trimmed.slice(1).trim();
+            } else if (trimmed.startsWith('+')) {
+              op = '+';
+              body = trimmed.slice(1).trim();
+            } else if (/^(삭제|제거|del|remove)\s*:/i.test(trimmed)) {
+              op = '-';
+              body = trimmed.replace(/^(삭제|제거|del|remove)\s*:/i, '').trim();
+            } else if (/^(추가|습득|add)\s*:/i.test(trimmed)) {
+              op = '+';
+              body = trimmed.replace(/^(추가|습득|add)\s*:/i, '').trim();
+            }
+
+            const parts = body.split(':').map(cleanStr);
             const catMap = { '소비': 'consumable', '회복': 'consumable', '무기': 'weapon', '방어구': 'armor', '장신구': 'acc', '기타': 'misc', '기타 및 특수': 'misc' };
-            const cat = catMap[parts[0]] || 'misc';
-            const name = parts[1];
+            const hasCat = Object.prototype.hasOwnProperty.call(catMap, parts[0]);
+            const cat = hasCat ? catMap[parts[0]] : 'misc';
+            const name = hasCat ? parts[1] : parts[0];
             if (!name) return;
 
             if (op === '-') {
-              const delQty = parseInt(parts[2], 10) || 1;
+              const delQty = parseInt(hasCat ? parts[2] : parts[1], 10) || 1;
               const idx = player.inventory.findIndex(it => it.name === name);
               if (idx !== -1) {
                 const it = player.inventory[idx];
@@ -1653,33 +1674,37 @@
                   player.inventory.splice(idx, 1);
                 }
               }
-            } else if (op === '+') {
+            } else {
               if (cat === 'consumable') {
-                // +회복:이름:회복량:수량:설명 또는 구버전 +소비:이름:hp:30:2:설명 모두 지원
                 const isLegacy = ['hp', 'mp', 'both', 'none'].includes((parts[2] || '').toLowerCase());
                 const effectType = isLegacy ? parts[2].toLowerCase() : undefined;
                 const val = parseInt(isLegacy ? parts[3] : parts[2], 10) || 0;
                 const qty = parseInt(isLegacy ? parts[4] : parts[3], 10) || 1;
-                const desc = (isLegacy ? parts[5] : parts[4]) || (val > 0 ? `사용 시 ${val} 회복` : '회복 아이템');
+                const desc = (isLegacy ? parts.slice(5).join(':') : parts.slice(4).join(':')) || (val > 0 ? `사용 시 ${val} 회복` : '회복 아이템');
                 const ex = player.inventory.find(it => it.cat === 'consumable' && it.name === name);
                 if (ex) ex.qty = (ex.qty || 1) + qty;
                 else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push({ cat, name, effectType, val, qty, desc });
               } else if (cat === 'weapon') {
                 if (player.inventory.length < MAX_INVEN_SLOTS) {
-                  player.inventory.push({ cat, name, statType: parts[2] || '공격력', val: parseInt(parts[3], 10) || 0, desc: parts[4] || '' });
+                  const valNum = parseInt(parts[3], 10) || 0;
+                  const desc = parts.slice(4).join(':') || `${parts[2] || '공격력'} +${valNum} 무기`;
+                  player.inventory.push({ cat, name, statType: parts[2] || '공격력', val: valNum, desc });
                 }
               } else if (cat === 'armor') {
                 if (player.inventory.length < MAX_INVEN_SLOTS) {
-                  player.inventory.push({ cat, name, hp: parseInt(parts[2], 10) || 0, def: parseInt(parts[3], 10) || 0, desc: parts[4] || '' });
+                  const hpNum = parseInt(parts[2], 10) || 0;
+                  const defNum = parseInt(parts[3], 10) || 0;
+                  const desc = parts.slice(4).join(':') || `HP +${hpNum}, 방어력 +${defNum} 방어구`;
+                  player.inventory.push({ cat, name, hp: hpNum, def: defNum, desc });
                 }
               } else if (cat === 'acc') {
                 if (player.inventory.length < MAX_INVEN_SLOTS) {
-                  const desc = parts[2] || '장착 가능한 장신구';
+                  const desc = parts.slice(2).join(':') || '장착 가능한 장신구';
                   player.inventory.push({ cat, name, effect: desc, desc });
                 }
               } else {
-                const qty = parseInt(parts[2], 10) || 1;
-                const desc = parts[3] || '소지 중인 기타 · 특수 물품';
+                const qty = parseInt(hasCat ? parts[2] : parts[1], 10) || 1;
+                const desc = (hasCat ? parts.slice(3).join(':') : parts.slice(2).join(':')) || '소지 중인 기타 · 특수 물품';
                 const ex = player.inventory.find(it => it.cat === 'misc' && it.name === name);
                 if (ex) ex.qty = (ex.qty || 1) + qty;
                 else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push({ cat: 'misc', name, qty, desc });
@@ -1688,28 +1713,56 @@
           });
         }
 
+        // 스킬 동기화: URLSearchParams가 '+'를 공백으로 변환하는 경우 및 추가/삭제 접두어 모두 처리
         const skillRaw = params.get('skill');
         if (skillRaw && skillRaw !== 'none' && skillRaw !== 'null') {
           const catMap = { '물리': 'phys', '마법': 'mag', '방어': 'def', '회복': 'heal' };
-          skillRaw.split(',').forEach(entry => {
-            const op = entry[0];
-            const parts = entry.slice(1).split(':').map(cleanStr);
+          skillRaw.split(',').forEach(rawEntry => {
+            if (!rawEntry) return;
+            const trimmed = rawEntry.trim();
+            if (!trimmed) return;
+
+            let op = '+';
+            let body = trimmed;
+            if (trimmed.startsWith('-')) {
+              op = '-';
+              body = trimmed.slice(1).trim();
+            } else if (trimmed.startsWith('+')) {
+              op = '+';
+              body = trimmed.slice(1).trim();
+            } else if (/^(삭제|제거|del|remove)\s*:/i.test(trimmed)) {
+              op = '-';
+              body = trimmed.replace(/^(삭제|제거|del|remove)\s*:/i, '').trim();
+            } else if (/^(추가|각인|add)\s*:/i.test(trimmed)) {
+              op = '+';
+              body = trimmed.replace(/^(추가|각인|add)\s*:/i, '').trim();
+            }
+
+            const parts = body.split(':').map(cleanStr);
             if (op === '-') {
-              player.skills = player.skills.filter(s => s.name !== parts[0]);
-            } else if (op === '+' && parts[1] && player.skills.length < MAX_SKILL_SLOTS) {
-              const cat = catMap[parts[0]] || 'phys';
-              const name = parts[1];
-              if (!player.skills.some(s => s.name === name)) {
+              const delName = Object.prototype.hasOwnProperty.call(catMap, parts[0]) ? parts[1] : parts[0];
+              if (delName) player.skills = player.skills.filter(s => s.name !== delName);
+            } else {
+              const hasCat = Object.prototype.hasOwnProperty.call(catMap, parts[0]);
+              const cat = hasCat ? catMap[parts[0]] : 'phys';
+              const name = hasCat ? parts[1] : parts[0];
+              const coeff = parseFloat(hasCat ? parts[2] : parts[1]) || 1;
+              const mp = parseInt(hasCat ? parts[3] : parts[2], 10) || 0;
+              const maxCd = parseInt(hasCat ? parts[4] : parts[3], 10) || 0;
+              const effect = (hasCat ? parts[5] : parts[4]) || '고유 스킬 효과';
+              const desc = (hasCat ? parts.slice(6).join(':') : parts.slice(5).join(':')) || '각인된 고유 스킬';
+
+              if (name && player.skills.length < MAX_SKILL_SLOTS && !player.skills.some(s => s.name === name)) {
                 player.skills.push({
                   id: 'sk_' + Date.now() + Math.random(),
                   name,
                   cat,
-                  coeff: parseFloat(parts[2]) || 1,
-                  mp: parseInt(parts[3], 10) || 0,
+                  coeff,
+                  mp,
                   cd: 0,
-                  maxCd: parseInt(parts[4], 10) || 0,
-                  effect: parts[5] || '고유 스킬 효과',
-                  desc: parts[6] || '각인된 고유 스킬'
+                  maxCd,
+                  effect,
+                  desc
                 });
               }
             }
