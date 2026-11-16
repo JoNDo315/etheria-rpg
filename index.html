@@ -450,6 +450,7 @@
       display: flex;
       align-items: center;
       gap: 4px;
+      flex-shrink: 0;
     }
     .stat-val-badge {
       min-width: 26px;
@@ -458,6 +459,12 @@
       font-weight: 800;
       color: #a5b4fc;
       font-variant-numeric: tabular-nums;
+    }
+    .stat-ap-input {
+      width: 56px;
+      padding: 4px 4px;
+      text-align: center;
+      font-size: 12px;
     }
     .sub-section-box {
       background: #161a26;
@@ -582,6 +589,14 @@
       gap: 4px;
       flex-shrink: 0;
     }
+    .skill-edit-box {
+      margin-top: 6px;
+      padding-top: 7px;
+      border-top: 1px dashed #323b57;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
 
     /* 가변 MP 스킬 발동 입력 박스 */
     .mp-spend-box {
@@ -634,6 +649,11 @@
       outline: none;
       border-color: #6366f1;
     }
+    input:disabled {
+      background: #141824;
+      color: #64748b;
+      border-color: #252b40;
+    }
     .mini-btn {
       background: #2b324a;
       color: #f1f5f9;
@@ -665,6 +685,11 @@
       background: #065f46;
       border-color: #059669;
       color: #d1fae5;
+    }
+    .mini-btn.warning {
+      background: #78350f;
+      border-color: #d97706;
+      color: #fde68a;
     }
     .mini-btn.danger {
       background: #7f1d1d;
@@ -977,7 +1002,7 @@
       <div id="invenList" class="flex-col"></div>
     </div>
 
-    <!-- 접이식 창 3: 스킬목록 (상시 노출 백지 상태창 스킬 각인 박스 포함) -->
+    <!-- 접이식 창 3: 스킬목록 (상시 노출 백지 상태창 스킬 각인 + 기존 스킬 성장/수정) -->
     <div class="drawer" id="drawer-skills">
       <div class="drawer-header">
         <span>⚡ 스킬목록</span>
@@ -1064,6 +1089,22 @@
         </div>
         <div id="drawerStatusList" class="flex-col"></div>
       </div>
+
+      <!-- 데이터 백업 및 완전 대체 불러오기 -->
+      <div class="sub-section-box">
+        <div class="sub-section-label">
+          <span>💾 데이터 백업 및 복구</span>
+          <span style="font-size:10px; color:#fbbf24;">불러오기 시 현재 상태 완전 대체</span>
+        </div>
+        <button class="mini-btn primary" style="width:100%;" onclick="copyBackupLink()">🔗 백업 링크 복사</button>
+        <div id="backupOutputWrap" style="display:none;">
+          <input id="outputBackupLink" readonly onclick="this.select()" style="font-size:11px; color:#a5b4fc;" />
+        </div>
+        <div class="input-inline">
+          <input id="inputRestoreBackup" placeholder="백업 링크(#backup=...) 붙여넣기" />
+          <button class="mini-btn warning" onclick="restoreFromInput()">불러오기</button>
+        </div>
+      </div>
     </div>
 
     <!-- 이벤트 / 적 표시 -->
@@ -1117,6 +1158,7 @@
     const STORAGE_KEY = 'etheria_rpg_v4_state';
     const MAX_INVEN_SLOTS = 10;
     const MAX_SKILL_SLOTS = 8;
+    const AP_PER_LEVEL = 5;
 
     const SKILL_CAT_META = {
       phys: { label: '물리', pillClass: 'red', btnClass: 'btn-phys' },
@@ -1216,9 +1258,11 @@
 
     let activeDrawer = null;
     let expandedEquipSlot = null;
+    let editingSkillId = null;
     let pendingVariableSkillId = null;
     let isEditingName = false;
     let incomingAlert = '';
+    let restoredFromBackupThisLoad = false;
 
     function cleanStr(s) {
       return (s || '').replace(/_/g, ' ').trim();
@@ -1266,13 +1310,48 @@
         name: sk.name || '이름 없는 스킬',
         cat,
         coeff,
-        mp: Number(sk.mp) || 0,
+        mp: (cat === 'heal' || cat === 'def') ? 0 : (Number(sk.mp) || 0),
         cd: Number(sk.cd) || 0,
         maxCd: Number(sk.maxCd) || 0,
-        effect: sk.effect || (cat === 'heal' || cat === 'def'
-          ? `소모 MP × ${coeff} 적용`
-          : `계수 ×${coeff} 발동`),
+        effect: sk.effect || buildDefaultSkillEffect(cat, coeff),
         desc: sk.desc || '등록된 한 줄 설명이 없습니다.'
+      };
+    }
+
+    function buildDefaultSkillEffect(cat, coeff) {
+      const map = {
+        phys: `(공격력 − 방어력) × ${coeff} 물리 피해`,
+        mag:  `(마력 − 방어력) × ${coeff} 마법 피해`,
+        def:  `소모 MP × ${coeff}만큼 방어력 적용 (사용 시 MP 선택)`,
+        heal: `소모 MP × ${coeff}만큼 HP 회복 (사용 시 MP 선택)`
+      };
+      return map[cat] || map.phys;
+    }
+
+    function hydratePlayer(rawObj) {
+      const parsed = rawObj && typeof rawObj === 'object' ? rawObj : {};
+      const rawSkills = Array.isArray(parsed.skills) ? parsed.skills : DEFAULT_PLAYER.skills;
+      const rawStatuses = Array.isArray(parsed.statuses) ? parsed.statuses : [];
+      const parsedStats = parsed.stats || {};
+      return {
+        ...deepClone(DEFAULT_PLAYER),
+        ...parsed,
+        stats: {
+          str: Number(parsedStats.str) || 0,
+          int: Number(parsedStats.int) || 0,
+          con: Number(parsedStats.con) || 0,
+          vit: Number(parsedStats.vit) || 0,
+          mnd: Number(parsedStats.mnd) || 0
+        },
+        statuses: rawStatuses.map(normalizeStatus).filter(Boolean),
+        equipment: {
+          ...DEFAULT_PLAYER.equipment,
+          ...(parsed.equipment || {})
+        },
+        inventory: Array.isArray(parsed.inventory)
+          ? parsed.inventory.slice(0, MAX_INVEN_SLOTS)
+          : deepClone(DEFAULT_PLAYER.inventory),
+        skills: rawSkills.slice(0, MAX_SKILL_SLOTS).map(normalizeSkill)
       };
     }
 
@@ -1280,28 +1359,7 @@
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return deepClone(DEFAULT_PLAYER);
-        const parsed = JSON.parse(raw);
-        const rawSkills = Array.isArray(parsed.skills) ? parsed.skills : DEFAULT_PLAYER.skills;
-        const rawStatuses = Array.isArray(parsed.statuses) ? parsed.statuses : [];
-        const parsedStats = parsed.stats || {};
-        return {
-          ...deepClone(DEFAULT_PLAYER),
-          ...parsed,
-          stats: {
-            str: Number(parsedStats.str) || 0,
-            int: Number(parsedStats.int) || 0,
-            con: Number(parsedStats.con) || 0,
-            vit: Number(parsedStats.vit) || 0,
-            mnd: Number(parsedStats.mnd) || 0
-          },
-          statuses: rawStatuses.map(normalizeStatus).filter(Boolean),
-          equipment: {
-            ...DEFAULT_PLAYER.equipment,
-            ...(parsed.equipment || {})
-          },
-          inventory: Array.isArray(parsed.inventory) ? parsed.inventory : deepClone(DEFAULT_PLAYER.inventory),
-          skills: rawSkills.slice(0, MAX_SKILL_SLOTS).map(normalizeSkill)
-        };
+        return hydratePlayer(JSON.parse(raw));
       } catch {
         return deepClone(DEFAULT_PLAYER);
       }
@@ -1311,6 +1369,145 @@
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(player));
       } catch {}
+    }
+
+    // URL-safe UTF-8 Base64 백업 인코딩/디코딩
+    function encodeBackupPayload(obj) {
+      const json = JSON.stringify(obj);
+      const bytes = new TextEncoder().encode(json);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) {
+        bin += String.fromCharCode(bytes[i]);
+      }
+      return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
+    function decodeBackupPayload(encoded) {
+      let b64 = encoded.trim().replace(/-/g, '+').replace(/_/g, '/');
+      while (b64.length % 4) b64 += '=';
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) {
+        bytes[i] = bin.charCodeAt(i);
+      }
+      const json = new TextDecoder().decode(bytes);
+      return JSON.parse(json);
+    }
+
+    function extractBackupToken(rawText) {
+      const str = (rawText || '').trim();
+      if (!str) return '';
+      const hashIdx = str.indexOf('#backup=');
+      if (hashIdx !== -1) {
+        return str.slice(hashIdx + 8).split('&')[0].trim();
+      }
+      if (str.startsWith('backup=')) {
+        return str.slice(7).split('&')[0].trim();
+      }
+      return str;
+    }
+
+    // 백업 데이터로 1:1 완전 대체 복구
+    function applyBackupFromString(rawText, isFromHash) {
+      const token = extractBackupToken(rawText);
+      if (!token) return false;
+      try {
+        const decoded = decodeBackupPayload(token);
+        if (!decoded || typeof decoded !== 'object' || !decoded.stats || !Array.isArray(decoded.skills)) {
+          return false;
+        }
+        const restored = hydratePlayer(decoded);
+        restored.lastSyncedTurn = 0; // 다음 AI 링크의 턴 번호를 새 기준점으로 승계
+        player = restored;
+        actionQueue = [];
+        editingSkillId = null;
+        pendingVariableSkillId = null;
+        restoredFromBackupThisLoad = true;
+        savePlayer();
+
+        if (isFromHash && window.history && window.history.replaceState) {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function checkHashBackupOnStartup() {
+      const hash = window.location.hash || '';
+      if (hash.includes('backup=')) {
+        const ok = applyBackupFromString(hash, true);
+        if (ok) {
+          incomingAlert = '✅ 백업 링크로부터 상태창 전체가 복원되었습니다. (다음 턴 AI 링크와 자동 연동됩니다)';
+        } else {
+          incomingAlert = '⚠️ 백업 링크 데이터가 손상되어 불러오지 못했습니다.';
+        }
+      }
+    }
+
+    function copyBackupLink() {
+      const snapshot = {
+        v: 1,
+        name: player.name,
+        customName: player.customName,
+        job: player.job,
+        lv: player.lv,
+        exp: player.exp,
+        maxExp: player.maxExp,
+        ap: player.ap,
+        hp: player.hp,
+        maxHp: player.maxHp,
+        mp: player.mp,
+        maxMp: player.maxMp,
+        gold: player.gold,
+        baseAtk: player.baseAtk,
+        baseMag: player.baseMag,
+        baseDef: player.baseDef,
+        stats: player.stats,
+        statuses: player.statuses,
+        equipment: player.equipment,
+        inventory: player.inventory,
+        skills: player.skills
+      };
+
+      const baseUrl = window.location.origin + window.location.pathname;
+      const backupUrl = `${baseUrl}#backup=${encodeBackupPayload(snapshot)}`;
+
+      const wrap = document.getElementById('backupOutputWrap');
+      const outInp = document.getElementById('outputBackupLink');
+      if (wrap && outInp) {
+        wrap.style.display = 'block';
+        outInp.value = backupUrl;
+      }
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(backupUrl).catch(() => {});
+      }
+
+      const queueNote = actionQueue.length > 0
+        ? ' (※ 하단 대기열의 미전송 행동은 제외된 현재 저장 상태 기준입니다)'
+        : '';
+      showNotice(`✅ 백업 링크가 복사되었습니다! 개인 메모장이나 채팅방에 안전하게 보관해 주세요.${queueNote}`);
+    }
+
+    function restoreFromInput() {
+      const inp = document.getElementById('inputRestoreBackup');
+      const raw = inp ? inp.value.trim() : '';
+      if (!raw) {
+        showNotice('⚠️ 붙여넣은 백업 링크가 비어 있습니다.');
+        return;
+      }
+      const ok = applyBackupFromString(raw, false);
+      if (!ok) {
+        showNotice('⚠️ 올바르지 않거나 손상된 백업 링크입니다.');
+        return;
+      }
+      inp.value = '';
+      render();
+      const jobInp = document.getElementById('inputJobName');
+      if (jobInp) jobInp.value = player.job === '미설정' ? '' : (player.job || '');
+      showNotice('✅ 백업 데이터로 상태창 전체가 완전 대체되었습니다! (다음 턴 AI 링크와 자동 연동됩니다)');
     }
 
     function calcAtk(p) {
@@ -1514,12 +1711,13 @@
             : `[수련] '${act.name}' 실시 (대상 스탯: ${act.statLabel} | 판정: 랜덤 상승)`;
         } else if (act.type === 'stat_ap') {
           const meta = STAT_META.find(m => m.key === act.statKey);
-          if (meta && simPlayer.ap > 0) {
-            simPlayer.ap -= 1;
-            simPlayer.stats[act.statKey] = (Number(simPlayer.stats[act.statKey]) || 0) + 1;
-            if (act.statKey === 'vit') simPlayer.hp += 10;
-            if (act.statKey === 'mnd') simPlayer.mp += 10;
-            logText = `[스텟] '${meta.label}' 포인트 투자 +1 (예상 ${meta.label} ${simPlayer.stats[act.statKey]} | ${meta.gainLabel})`;
+          const addAmt = Math.min(Number(act.amount) || 1, simPlayer.ap);
+          if (meta && addAmt > 0) {
+            simPlayer.ap -= addAmt;
+            simPlayer.stats[act.statKey] = (Number(simPlayer.stats[act.statKey]) || 0) + addAmt;
+            if (act.statKey === 'vit') simPlayer.hp += 10 * addAmt;
+            if (act.statKey === 'mnd') simPlayer.mp += 10 * addAmt;
+            logText = `[스텟] '${meta.label}' 포인트 투자 +${addAmt} (예상 ${meta.label} ${simPlayer.stats[act.statKey]})`;
           }
         } else if (act.type === 'job') {
           simPlayer.job = act.job;
@@ -1536,10 +1734,30 @@
             logText = `[특이사항] '${removed.name}' 상태 해제`;
           }
         } else if (act.type === 'add_skill') {
-          if (simPlayer.skills.length < MAX_SKILL_SLOTS) simPlayer.skills.push(deepClone(act.skill));
+          const existingIdx = simPlayer.skills.findIndex(s => s.name === act.skill.name);
+          if (existingIdx !== -1) {
+            simPlayer.skills[existingIdx] = { ...deepClone(act.skill), id: simPlayer.skills[existingIdx].id };
+          } else if (simPlayer.skills.length < MAX_SKILL_SLOTS) {
+            simPlayer.skills.push(deepClone(act.skill));
+          }
           const catLabel = SKILL_CAT_META[act.skill.cat].label;
           const mpInfo = (act.skill.cat === 'heal' || act.skill.cat === 'def') ? '가변MP' : `MP ${act.skill.mp}`;
           logText = `[신규 스킬 각인] '${act.skill.name}' (${catLabel} | 계수 ×${act.skill.coeff} | ${mpInfo} | ${act.skill.desc})`;
+        } else if (act.type === 'edit_skill') {
+          const idx = simPlayer.skills.findIndex(s => s.id === act.skillId);
+          if (idx !== -1) {
+            const prevName = simPlayer.skills[idx].name;
+            simPlayer.skills[idx] = {
+              ...simPlayer.skills[idx],
+              ...deepClone(act.updated)
+            };
+            const sk = simPlayer.skills[idx];
+            const catLabel = SKILL_CAT_META[sk.cat].label;
+            const mpInfo = (sk.cat === 'heal' || sk.cat === 'def') ? '가변MP' : `MP ${sk.mp}`;
+            const cdInfo = sk.maxCd > 0 ? ` · 쿨 ${sk.maxCd}턴` : '';
+            const renameTag = prevName !== sk.name ? `'${prevName}' → '${sk.name}'` : `'${sk.name}'`;
+            logText = `[스킬 성장/수정] ${renameTag} (${catLabel} | 계수 ×${sk.coeff} | ${mpInfo}${cdInfo} | ${sk.desc})`;
+          }
         } else if (act.type === 'del_skill') {
           const sk = simPlayer.skills.find(s => s.id === act.skillId);
           if (sk) {
@@ -1567,8 +1785,8 @@
       if (params.get('loc')) turnData.loc = cleanStr(params.get('loc'));
       if (params.get('routes')) turnData.routes = params.get('routes').split(',').map(cleanStr).filter(Boolean);
 
-      // 새 채팅(turn=1) 시작 시 이전 채팅 잔여 데이터 자동 초기화
-      if (turnData.turn === 1 && (Number(player.lastSyncedTurn) || 0) > 1) {
+      // 새 채팅(turn=1) 시작 시 이전 채팅 잔여 데이터 자동 초기화 (단, 방금 백업을 복원한 경우는 제외)
+      if (turnData.turn === 1 && !restoredFromBackupThisLoad && (Number(player.lastSyncedTurn) || 0) > 1) {
         player = deepClone(DEFAULT_PLAYER);
         incomingAlert = '🆕 새 모험(T1)이 시작되어 상태창이 초기화되었습니다.';
       }
@@ -1747,6 +1965,7 @@
           });
         }
 
+        // 스킬 동기화: 신규 각인 또는 동명 스킬 진화(계수·소모MP·설명 덮어쓰기)
         const skillRaw = params.get('skill');
         if (skillRaw && skillRaw !== 'none' && skillRaw !== 'null') {
           const catMap = { '물리': 'phys', '마법': 'mag', '방어': 'def', '회복': 'heal' };
@@ -1766,9 +1985,9 @@
             } else if (/^(삭제|제거|del|remove)\s*:/i.test(trimmed)) {
               op = '-';
               body = trimmed.replace(/^(삭제|제거|del|remove)\s*:/i, '').trim();
-            } else if (/^(추가|각인|add)\s*:/i.test(trimmed)) {
+            } else if (/^(추가|각인|진화|강화|add|upgrade)\s*:/i.test(trimmed)) {
               op = '+';
-              body = trimmed.replace(/^(추가|각인|add)\s*:/i, '').trim();
+              body = trimmed.replace(/^(추가|각인|진화|강화|add|upgrade)\s*:/i, '').trim();
             }
 
             const parts = body.split(':').map(cleanStr);
@@ -1780,23 +1999,40 @@
               const cat = hasCat ? catMap[parts[0]] : 'phys';
               const name = hasCat ? parts[1] : parts[0];
               const coeff = parseFloat(hasCat ? parts[2] : parts[1]) || 1;
-              const mp = parseInt(hasCat ? parts[3] : parts[2], 10) || 0;
+              const isVarMp = (cat === 'heal' || cat === 'def');
+              const mp = isVarMp ? 0 : (parseInt(hasCat ? parts[3] : parts[2], 10) || 0);
               const maxCd = parseInt(hasCat ? parts[4] : parts[3], 10) || 0;
-              const effect = (hasCat ? parts[5] : parts[4]) || '고유 스킬 효과';
+              const effect = (hasCat ? parts[5] : parts[4]) || buildDefaultSkillEffect(cat, coeff);
               const desc = (hasCat ? parts.slice(6).join(':') : parts.slice(5).join(':')) || '각인된 고유 스킬';
 
-              if (name && player.skills.length < MAX_SKILL_SLOTS && !player.skills.some(s => s.name === name)) {
-                player.skills.push({
-                  id: 'sk_' + Date.now() + Math.random(),
-                  name,
-                  cat,
-                  coeff,
-                  mp,
-                  cd: 0,
-                  maxCd,
-                  effect,
-                  desc
-                });
+              if (name) {
+                const existingIdx = player.skills.findIndex(s => s.name === name);
+                if (existingIdx !== -1) {
+                  player.skills[existingIdx] = {
+                    ...player.skills[existingIdx],
+                    name,
+                    cat,
+                    coeff,
+                    mp,
+                    cd: 0,
+                    maxCd,
+                    effect,
+                    desc
+                  };
+                  notices.push(`스킬 성장: ${name} (×${coeff})`);
+                } else if (player.skills.length < MAX_SKILL_SLOTS) {
+                  player.skills.push({
+                    id: 'sk_' + Date.now() + Math.random(),
+                    name,
+                    cat,
+                    coeff,
+                    mp,
+                    cd: 0,
+                    maxCd,
+                    effect,
+                    desc
+                  });
+                }
               }
             }
           });
@@ -1812,10 +2048,10 @@
             player.lv += 1;
             player.exp -= player.maxExp;
             player.maxExp = Math.floor(player.maxExp * 1.4);
-            player.ap = (Number(player.ap) || 0) + 3;
+            player.ap = (Number(player.ap) || 0) + AP_PER_LEVEL;
             player.hp = calcMaxHp(player);
             player.mp = calcMaxMp(player);
-            notices.push(`LV.${player.lv} 달성! (AP +3)`);
+            notices.push(`LV.${player.lv} 달성! (AP +${AP_PER_LEVEL})`);
           }
         }
 
@@ -1833,14 +2069,15 @@
             player.lv += 1;
             player.exp -= player.maxExp;
             player.maxExp = Math.floor(player.maxExp * 1.4);
-            player.ap = (Number(player.ap) || 0) + 3;
+            player.ap = (Number(player.ap) || 0) + AP_PER_LEVEL;
+            notices.push(`LV.${player.lv} 달성! (AP +${AP_PER_LEVEL})`);
           }
         }
 
         player.lastSyncedTurn = turnData.turn;
         savePlayer();
 
-        if (notices.length > 0) {
+        if (notices.length > 0 && !incomingAlert) {
           incomingAlert = `✨ 턴 ${turnData.turn} 상태 동기화 완료: ${notices.join(', ')}`;
         }
       }
@@ -1867,7 +2104,7 @@
       if (renderedLogs.length === 0) return;
 
       const fullText = renderedLogs.join('\n');
-      if (navigator.clipboard) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(fullText).catch(() => {});
       }
 
@@ -1928,8 +2165,22 @@
 
     function queueStatAp(statKey) {
       const { simPlayer } = getSimulatedState();
-      if ((Number(simPlayer.ap) || 0) <= 0) return;
-      pushAction({ type: 'stat_ap', statKey });
+      const avail = Number(simPlayer.ap) || 0;
+      if (avail <= 0) return;
+
+      const inp = document.getElementById(`input-ap-${statKey}`);
+      const raw = inp ? parseInt(inp.value, 10) : 0;
+      if (!raw || raw <= 0) {
+        showNotice('⚠️ 투자할 상승 수치를 1 이상 입력해 주세요.');
+        return;
+      }
+      if (raw > avail) {
+        showNotice(`⚠️ 잔여 포인트(${avail})보다 많이 투자할 수 없습니다.`);
+        return;
+      }
+
+      inp.value = '';
+      pushAction({ type: 'stat_ap', statKey, amount: raw });
     }
 
     function queueAddStatus() {
@@ -2083,13 +2334,6 @@
       const mp = isVariableMp ? 0 : (mpEl && mpEl.value !== '' ? Math.max(0, parseInt(mpEl.value, 10) || 0) : 10);
       const maxCd = cdRaw === '' ? 0 : Math.max(0, parseInt(cdRaw, 10) || 0);
 
-      const defaultEffects = {
-        phys: `(공격력 − 방어력) × ${coeff} 물리 피해`,
-        mag:  `(마력 − 방어력) × ${coeff} 마법 피해`,
-        def:  `소모 MP × ${coeff}만큼 방어력 적용 (사용 시 MP 선택)`,
-        heal: `소모 MP × ${coeff}만큼 HP 회복 (사용 시 MP 선택)`
-      };
-
       const newSkill = {
         id: 'sk_' + Date.now(),
         name,
@@ -2098,7 +2342,7 @@
         mp,
         cd: 0,
         maxCd,
-        effect: defaultEffects[cat],
+        effect: buildDefaultSkillEffect(cat, coeff),
         desc: descInput || '백지 상태창에서 각인한 고유 스킬'
       };
 
@@ -2109,8 +2353,62 @@
       pushAction({ type: 'add_skill', skill: newSkill });
     }
 
+    function toggleEditSkill(skillId) {
+      editingSkillId = editingSkillId === skillId ? null : skillId;
+      render();
+    }
+
+    function onEditSkillCatChange(skillId) {
+      const catEl = document.getElementById(`edit-sk-cat-${skillId}`);
+      const mpEl = document.getElementById(`edit-sk-mp-${skillId}`);
+      if (!catEl || !mpEl) return;
+      const isVarMp = (catEl.value === 'heal' || catEl.value === 'def');
+      mpEl.disabled = isVarMp;
+      if (isVarMp) {
+        mpEl.value = '';
+        mpEl.placeholder = '가변MP';
+      } else {
+        mpEl.placeholder = '소모 MP';
+      }
+    }
+
+    function queueSaveEditSkill(skillId) {
+      const nameEl = document.getElementById(`edit-sk-name-${skillId}`);
+      const catEl = document.getElementById(`edit-sk-cat-${skillId}`);
+      const coeffEl = document.getElementById(`edit-sk-coeff-${skillId}`);
+      const mpEl = document.getElementById(`edit-sk-mp-${skillId}`);
+      const cdEl = document.getElementById(`edit-sk-cd-${skillId}`);
+      const descEl = document.getElementById(`edit-sk-desc-${skillId}`);
+
+      const name = nameEl ? nameEl.value.trim() : '';
+      if (!name) return;
+
+      const cat = catEl ? catEl.value : 'phys';
+      const coeff = coeffEl && coeffEl.value !== '' ? Math.max(0.1, parseFloat(coeffEl.value) || 1) : 1;
+      const isVarMp = (cat === 'heal' || cat === 'def');
+      const mp = isVarMp ? 0 : (mpEl && mpEl.value !== '' ? Math.max(0, parseInt(mpEl.value, 10) || 0) : 0);
+      const maxCd = cdEl && cdEl.value !== '' ? Math.max(0, parseInt(cdEl.value, 10) || 0) : 0;
+      const desc = descEl ? descEl.value.trim() : '';
+
+      editingSkillId = null;
+      pushAction({
+        type: 'edit_skill',
+        skillId,
+        updated: {
+          name,
+          cat,
+          coeff,
+          mp,
+          maxCd,
+          effect: buildDefaultSkillEffect(cat, coeff),
+          desc: desc || '성장을 통해 다듬어진 고유 스킬'
+        }
+      });
+    }
+
     function queueDeleteSkill(skillId) {
       if (pendingVariableSkillId === skillId) pendingVariableSkillId = null;
+      if (editingSkillId === skillId) editingSkillId = null;
       pushAction({ type: 'del_skill', skillId });
     }
 
@@ -2412,6 +2710,31 @@
         const isVarMp = (sk.cat === 'heal' || sk.cat === 'def');
         const mpText = isVarMp ? '가변MP' : `MP ${sk.mp}`;
         const costInfo = sk.maxCd > 0 ? `계수 ×${sk.coeff} · ${mpText} · 쿨 ${sk.maxCd}턴` : `계수 ×${sk.coeff} · ${mpText}`;
+        const isEditing = editingSkillId === sk.id;
+
+        const editPanelHtml = isEditing ? `
+          <div class="skill-edit-box">
+            <div class="input-inline">
+              <input id="edit-sk-name-${sk.id}" value="${escapeHtml(sk.name)}" placeholder="스킬명" />
+              <select id="edit-sk-cat-${sk.id}" style="width:76px; flex-shrink:0;" onchange="onEditSkillCatChange('${sk.id}')">
+                <option value="phys" ${sk.cat === 'phys' ? 'selected' : ''}>물리</option>
+                <option value="mag" ${sk.cat === 'mag' ? 'selected' : ''}>마법</option>
+                <option value="def" ${sk.cat === 'def' ? 'selected' : ''}>방어</option>
+                <option value="heal" ${sk.cat === 'heal' ? 'selected' : ''}>회복</option>
+              </select>
+            </div>
+            <div class="input-inline">
+              <input type="number" step="0.1" min="0.1" id="edit-sk-coeff-${sk.id}" value="${sk.coeff}" placeholder="계수" />
+              <input type="number" min="0" id="edit-sk-mp-${sk.id}" value="${isVarMp ? '' : sk.mp}" placeholder="${isVarMp ? '가변MP' : '소모 MP'}" ${isVarMp ? 'disabled' : ''} />
+              <input type="number" min="0" id="edit-sk-cd-${sk.id}" value="${sk.maxCd}" placeholder="쿨(턴)" style="width:72px; flex-shrink:0;" />
+            </div>
+            <div class="input-inline">
+              <input id="edit-sk-desc-${sk.id}" value="${escapeHtml(sk.desc)}" placeholder="한 줄 설명 입력" />
+              <button class="mini-btn primary" onclick="queueSaveEditSkill('${sk.id}')">저장</button>
+              <button class="mini-btn" onclick="toggleEditSkill('${sk.id}')">취소</button>
+            </div>
+          </div>
+        ` : '';
 
         return `
           <div class="list-card">
@@ -2422,11 +2745,13 @@
                 <span style="font-size:10px; color:#94a3b8; font-weight:600;">${costInfo}</span>
               </div>
               <div class="list-btns">
+                <button class="mini-btn" onclick="toggleEditSkill('${sk.id}')">수정</button>
                 <button class="mini-btn danger" onclick="queueDeleteSkill('${sk.id}')">삭제</button>
               </div>
             </div>
             <div class="list-effect">효과: ${escapeHtml(sk.effect)}</div>
             <div class="list-desc">${escapeHtml(sk.desc)}</div>
+            ${editPanelHtml}
           </div>
         `;
       }).join('');
@@ -2460,7 +2785,17 @@
             </div>
             <div class="stat-actions">
               <span class="stat-val-badge">${val}</span>
-              <button class="mini-btn primary" ${ap <= 0 ? 'disabled' : ''} onclick="queueStatAp('${m.key}')">+AP</button>
+              <input
+                type="number"
+                class="stat-ap-input"
+                id="input-ap-${m.key}"
+                min="1"
+                max="${ap}"
+                placeholder="수치"
+                ${ap < 1 ? 'disabled' : ''}
+                onkeydown="if(event.key==='Enter') queueStatAp('${m.key}')"
+              />
+              <button class="mini-btn primary" ${ap < 1 ? 'disabled' : ''} onclick="queueStatAp('${m.key}')">적용</button>
             </div>
           </div>
         `;
@@ -2605,7 +2940,8 @@
       }
     }
 
-    // 초기 실행: 자율 입력 서브필드 초기화 + URL 동기화 + 렌더링
+    // 초기 실행: 해시 백업 복구 확인 → 자율 입력 서브필드 초기화 → URL 동기화 → 렌더링
+    checkHashBackupOnStartup();
     renderAddItemSubFields();
     renderAddSkillSubFields();
     parseIncomingData();
