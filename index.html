@@ -233,13 +233,18 @@
     /* 특이사항 상세 카드 (스텟 탭 내부용) */
     .status-detail-card {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
       gap: 6px;
       background: #1c2030;
       border: 1px solid rgba(251, 191, 36, 0.35);
       border-radius: 6px;
-      padding: 5px 8px;
+      padding: 6px 8px;
+    }
+    .status-detail-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
     }
     .status-detail-name {
       font-size: 11px;
@@ -250,6 +255,13 @@
       font-size: 10px;
       color: #cbd5e1;
       margin-top: 1px;
+    }
+    .status-edit-box {
+      padding-top: 6px;
+      border-top: 1px dashed #323b57;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
     }
 
     /* 이름 인라인 수정창 */
@@ -1159,7 +1171,7 @@
 
       <div id="statRowsList" class="flex-col"></div>
 
-      <!-- 특이사항 (이름 + 효과/설명 입력) -->
+      <!-- 특이사항 (이름 + 효과/설명 입력 + 기존 항목 수정) -->
       <div class="sub-section-box">
         <div class="sub-section-label">
           <span>✨ 특이사항 (축복 · 버프 · 저주)</span>
@@ -1244,6 +1256,7 @@
     const MAX_INVEN_SLOTS = 10;
     const MAX_SKILL_SLOTS = 8;
     const AP_PER_LEVEL = 5;
+    const DEFAULT_STATUS_DESC = '적용 중인 특수 효과';
 
     const SKILL_CAT_META = {
       phys: { label: '물리', pillClass: 'red', btnClass: 'btn-phys' },
@@ -1344,6 +1357,7 @@
     let activeDrawer = null;
     let expandedEquipSlot = null;
     let editingSkillId = null;
+    let editingStatusIdx = null;
     let pendingVariableSkillId = null;
     let isEditingName = false;
     let isConditionExpanded = false;
@@ -1373,15 +1387,15 @@
         if (idx !== -1) {
           return {
             name: st.slice(0, idx).trim() || '특이사항',
-            desc: st.slice(idx + 1).trim() || '적용 중인 특수 효과'
+            desc: st.slice(idx + 1).trim() || DEFAULT_STATUS_DESC
           };
         }
-        return { name: st.trim(), desc: '적용 중인 특수 효과' };
+        return { name: st.trim(), desc: DEFAULT_STATUS_DESC };
       }
       if (st && typeof st === 'object') {
         return {
           name: String(st.name || '특이사항').trim(),
-          desc: String(st.desc || '적용 중인 특수 효과').trim()
+          desc: String(st.desc || DEFAULT_STATUS_DESC).trim()
         };
       }
       return null;
@@ -1508,6 +1522,7 @@
         player = restored;
         actionQueue = [];
         editingSkillId = null;
+        editingStatusIdx = null;
         pendingVariableSkillId = null;
         isConditionExpanded = false;
         focusedConditionIdx = null;
@@ -1841,6 +1856,14 @@
           if (idx !== -1) simPlayer.statuses[idx].desc = act.desc;
           else simPlayer.statuses.push({ name: act.name, desc: act.desc });
           logText = `[특이사항] '${act.name}' 상태 추가 (${act.desc})`;
+        } else if (act.type === 'edit_status') {
+          const st = simPlayer.statuses[act.idx];
+          if (st) {
+            const prevName = st.name;
+            simPlayer.statuses[act.idx] = { name: act.name, desc: act.desc };
+            const renameTag = prevName !== act.name ? `'${prevName}' → '${act.name}'` : `'${act.name}'`;
+            logText = `[특이사항] ${renameTag} 효과 수정 (${act.desc})`;
+          }
         } else if (act.type === 'del_status') {
           const removed = simPlayer.statuses[act.idx];
           if (removed) {
@@ -1971,18 +1994,23 @@
           });
         }
 
-        // 특이사항 동기화 (이름:효과 또는 이름 단독 지원)
+        // 특이사항 동기화 (이름:효과 지원 + AI가 콜론 없이 이름만 보낸 경우 기존 설명 보존)
         const statusRaw = params.get('status');
         if (statusRaw) {
           if (statusRaw === 'none' || statusRaw === 'null') {
             player.statuses = [];
           } else {
+            const prevStatuses = Array.isArray(player.statuses) ? player.statuses : [];
             player.statuses = statusRaw.split(',').map(entry => {
               const parts = entry.split(':').map(cleanStr);
               if (!parts[0]) return null;
+              const incomingDesc = parts.slice(1).join(':').trim();
+              const prevMatch = prevStatuses.find(ps => ps.name === parts[0]);
+              const finalDesc = incomingDesc
+                || (prevMatch && prevMatch.desc && prevMatch.desc !== DEFAULT_STATUS_DESC ? prevMatch.desc : DEFAULT_STATUS_DESC);
               return {
                 name: parts[0],
-                desc: parts.slice(1).join(':') || '적용 중인 특수 효과'
+                desc: finalDesc
               };
             }).filter(Boolean);
           }
@@ -2094,7 +2122,6 @@
                 }
               }
             } else {
-              // 방금 equip 파라미터 처리로 이미 인벤토리로 복귀된 동일 장비 중복 추가 방지
               if ((cat === 'weapon' || cat === 'armor' || cat === 'acc') && unequippedNamesThisTurn.has(name)) {
                 return;
               }
@@ -2261,12 +2288,14 @@
 
     function removeQueuedAction(idx) {
       actionQueue.splice(idx, 1);
+      editingStatusIdx = null;
       render();
     }
 
     function clearActionQueue() {
       actionQueue = [];
       pendingVariableSkillId = null;
+      editingStatusIdx = null;
       render();
     }
 
@@ -2374,15 +2403,38 @@
       descInp.value = '';
       isConditionExpanded = true;
       focusedConditionIdx = null;
+      editingStatusIdx = null;
       pushAction({
         type: 'add_status',
         name,
-        desc: desc || '적용 중인 특수 효과'
+        desc: desc || DEFAULT_STATUS_DESC
+      });
+    }
+
+    function toggleEditStatus(idx) {
+      editingStatusIdx = editingStatusIdx === idx ? null : idx;
+      render();
+    }
+
+    function queueSaveEditStatus(idx) {
+      const nameEl = document.getElementById(`edit-st-name-${idx}`);
+      const descEl = document.getElementById(`edit-st-desc-${idx}`);
+      const name = nameEl ? nameEl.value.trim() : '';
+      const desc = descEl ? descEl.value.trim() : '';
+      if (!name) return;
+      editingStatusIdx = null;
+      isConditionExpanded = true;
+      pushAction({
+        type: 'edit_status',
+        idx,
+        name,
+        desc: desc || DEFAULT_STATUS_DESC
       });
     }
 
     function queueRemoveStatus(idx) {
       focusedConditionIdx = null;
+      editingStatusIdx = null;
       pushAction({ type: 'del_status', idx });
     }
 
@@ -2996,15 +3048,35 @@
 
       const statusListEl = document.getElementById('drawerStatusList');
       if (simPlayer.statuses && simPlayer.statuses.length > 0) {
-        statusListEl.innerHTML = simPlayer.statuses.map((st, idx) => `
-          <div class="status-detail-card">
-            <div>
-              <div class="status-detail-name">✨ ${escapeHtml(st.name)}</div>
-              <div class="status-detail-desc">${escapeHtml(st.desc)}</div>
+        statusListEl.innerHTML = simPlayer.statuses.map((st, idx) => {
+          const isEditing = editingStatusIdx === idx;
+          const editHtml = isEditing ? `
+            <div class="status-edit-box">
+              <input id="edit-st-name-${idx}" value="${escapeHtml(st.name)}" placeholder="특이사항 이름" />
+              <div class="input-inline">
+                <input id="edit-st-desc-${idx}" value="${escapeHtml(st.desc)}" placeholder="강화/약화된 효과 설명 입력" onkeydown="if(event.key==='Enter') queueSaveEditStatus(${idx})" />
+                <button class="mini-btn primary" onclick="queueSaveEditStatus(${idx})">저장</button>
+                <button class="mini-btn" onclick="toggleEditStatus(${idx})">취소</button>
+              </div>
             </div>
-            <button class="mini-btn danger" style="padding:3px 7px;" onclick="queueRemoveStatus(${idx})">해제</button>
-          </div>
-        `).join('');
+          ` : '';
+
+          return `
+            <div class="status-detail-card">
+              <div class="status-detail-top">
+                <div>
+                  <div class="status-detail-name">✨ ${escapeHtml(st.name)}</div>
+                  <div class="status-detail-desc">${escapeHtml(st.desc)}</div>
+                </div>
+                <div class="list-btns">
+                  <button class="mini-btn" style="padding:3px 7px;" onclick="toggleEditStatus(${idx})">수정</button>
+                  <button class="mini-btn danger" style="padding:3px 7px;" onclick="queueRemoveStatus(${idx})">해제</button>
+                </div>
+              </div>
+              ${editHtml}
+            </div>
+          `;
+        }).join('');
       } else {
         statusListEl.innerHTML = `<span style="font-size:11px; color:#64748b;">적용 중인 특이사항 없음</span>`;
       }
