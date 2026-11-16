@@ -136,15 +136,29 @@
       transition: width 0.2s ease;
     }
 
-    /* 상단 고정 특이사항 영역 */
+    /* 상단 고정 특이사항 영역 + 인라인 펼치기 패널 */
     .condition-row {
       padding-top: 5px;
       border-top: 1px dashed #2e3650;
       display: none;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 10px;
+    }
+    .condition-bar-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      cursor: pointer;
+    }
+    .condition-badges-wrap {
+      display: flex;
       align-items: center;
       flex-wrap: wrap;
       gap: 4px;
-      font-size: 10px;
+      flex: 1;
+      min-width: 0;
     }
     .condition-title {
       color: #fbbf24;
@@ -164,8 +178,56 @@
       gap: 4px;
       cursor: pointer;
     }
+    .condition-badge.active,
     .condition-badge:active {
-      background: rgba(251, 191, 36, 0.28);
+      background: rgba(251, 191, 36, 0.32);
+      border-color: #fbbf24;
+    }
+    .condition-toggle-btn {
+      font-size: 10px;
+      font-weight: 700;
+      color: #fbbf24;
+      background: rgba(251, 191, 36, 0.1);
+      border: 1px solid rgba(251, 191, 36, 0.3);
+      border-radius: 5px;
+      padding: 1px 6px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .condition-detail-panel {
+      display: none;
+      flex-direction: column;
+      gap: 4px;
+      background: #131724;
+      border: 1px solid rgba(251, 191, 36, 0.32);
+      border-radius: 7px;
+      padding: 6px 8px;
+      max-height: 132px;
+      overflow-y: auto;
+    }
+    .condition-detail-panel.open {
+      display: flex;
+    }
+    .condition-detail-item {
+      padding: 4px 6px;
+      border-radius: 5px;
+      background: #191e2e;
+      border: 1px solid #283047;
+    }
+    .condition-detail-item.active {
+      border-color: #fbbf24;
+      background: rgba(251, 191, 36, 0.08);
+    }
+    .condition-detail-item-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #fde68a;
+    }
+    .condition-detail-item-desc {
+      font-size: 10px;
+      color: #cbd5e1;
+      margin-top: 1px;
+      line-height: 1.35;
     }
 
     /* 특이사항 상세 카드 (스텟 탭 내부용) */
@@ -474,6 +536,10 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
+    }
+    .sub-section-box.awaken-box {
+      border-color: rgba(245, 158, 11, 0.45);
+      background: #191b28;
     }
     .sub-section-label {
       font-size: 11px;
@@ -918,10 +984,16 @@
           </div>
         </div>
 
-        <!-- 상단 고정 특이사항 영역 (터치 시 효과 확인) -->
+        <!-- 상단 고정 특이사항 영역 (터치 시 인라인 펼치기/접기) -->
         <div class="condition-row" id="conditionRow">
-          <span class="condition-title">✨ 특이사항</span>
-          <div id="conditionList" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
+          <div class="condition-bar-top" onclick="toggleConditionExpand()">
+            <div class="condition-badges-wrap">
+              <span class="condition-title">✨ 특이사항</span>
+              <div id="conditionList" style="display:flex; flex-wrap:wrap; gap:4px;"></div>
+            </div>
+            <span class="condition-toggle-btn" id="conditionToggleBtn">펼치기 ▾</span>
+          </div>
+          <div class="condition-detail-panel" id="conditionDetailPanel"></div>
         </div>
       </div>
 
@@ -1072,13 +1144,26 @@
         </div>
       </div>
 
+      <!-- 각성을 통한 자유 레벨업 -->
+      <div class="sub-section-box awaken-box">
+        <div class="sub-section-label">
+          <span style="color:#fbbf24;">🌟 각성 · 한계 돌파 (자유 레벨업)</span>
+          <span style="font-size:10px; color:#94a3b8;">레벨당 AP +5 · HP/MP 회복</span>
+        </div>
+        <div class="input-inline">
+          <input id="inputAwakenReason" placeholder="각성 계기 (선택, 예: 위기 속 마나 개화)" />
+          <input type="number" id="inputAwakenLevels" value="1" min="1" max="50" style="width:62px; flex-shrink:0; text-align:center;" title="상승 레벨 수" />
+          <button class="mini-btn warning" onclick="queueAwakenLevelUp()">각성</button>
+        </div>
+      </div>
+
       <div id="statRowsList" class="flex-col"></div>
 
       <!-- 특이사항 (이름 + 효과/설명 입력) -->
       <div class="sub-section-box">
         <div class="sub-section-label">
           <span>✨ 특이사항 (축복 · 버프 · 저주)</span>
-          <span style="font-size:10px; color:#64748b;">상단 배지 터치 시 효과 표시</span>
+          <span style="font-size:10px; color:#64748b;">상단 바 터치 시 펼쳐서 확인</span>
         </div>
         <div class="input-row">
           <input id="inputNewStatusName" placeholder="특이사항 이름 (예: 여신의 축복)" />
@@ -1261,6 +1346,8 @@
     let editingSkillId = null;
     let pendingVariableSkillId = null;
     let isEditingName = false;
+    let isConditionExpanded = false;
+    let focusedConditionIdx = null;
     let incomingAlert = '';
     let restoredFromBackupThisLoad = false;
 
@@ -1417,11 +1504,13 @@
           return false;
         }
         const restored = hydratePlayer(decoded);
-        restored.lastSyncedTurn = 0; // 다음 AI 링크의 턴 번호를 새 기준점으로 승계
+        restored.lastSyncedTurn = 0;
         player = restored;
         actionQueue = [];
         editingSkillId = null;
         pendingVariableSkillId = null;
+        isConditionExpanded = false;
+        focusedConditionIdx = null;
         restoredFromBackupThisLoad = true;
         savePlayer();
 
@@ -1616,14 +1705,14 @@
             const prev = simPlayer.equipment[slotKey];
             if (slotKey === 'weapon') {
               simPlayer.equipment.weapon = { name: item.name, statType: item.statType || '공격력', val: Number(item.val) || 0, desc: item.desc || '' };
-              logText = `[장비] 무기 '${item.name}' 장착 (${simPlayer.equipment.weapon.statType} +${simPlayer.equipment.weapon.val})`;
+              logText = `[장비] 무기 '${item.name}' 장착 (인벤토리에서 장착 이동 | ${simPlayer.equipment.weapon.statType} +${simPlayer.equipment.weapon.val})`;
             } else if (slotKey === 'armor') {
               simPlayer.equipment.armor = { name: item.name, hp: Number(item.hp) || 0, def: Number(item.def) || 0, desc: item.desc || '' };
-              logText = `[장비] 방어구 '${item.name}' 장착 (HP +${simPlayer.equipment.armor.hp}, 방어력 +${simPlayer.equipment.armor.def})`;
+              logText = `[장비] 방어구 '${item.name}' 장착 (인벤토리에서 장착 이동 | HP +${simPlayer.equipment.armor.hp}, 방어력 +${simPlayer.equipment.armor.def})`;
             } else {
               const eff = item.effect || item.desc || '특수 효과';
               simPlayer.equipment.acc = { name: item.name, effect: eff };
-              logText = `[장비] 장신구 '${item.name}' 장착 (${eff})`;
+              logText = `[장비] 장신구 '${item.name}' 장착 (인벤토리에서 장착 이동 | ${eff})`;
             }
             if (prev) simPlayer.inventory[act.idx] = { cat: slotKey, ...prev };
             else simPlayer.inventory.splice(act.idx, 1);
@@ -1643,6 +1732,17 @@
             logText = `[장비] ${labelMap[act.slotKey]} '${item.name}' 해제`;
           }
         } else if (act.type === 'custom_equip') {
+          const prev = simPlayer.equipment[act.slotKey];
+          const invIdx = simPlayer.inventory.findIndex(it => it.name === act.name);
+          if (invIdx !== -1) {
+            if (prev && prev.name !== act.name && act.slotKey === 'acc') {
+              simPlayer.inventory[invIdx] = { cat: 'acc', ...prev, desc: prev.desc || prev.effect || '' };
+            } else {
+              simPlayer.inventory.splice(invIdx, 1);
+            }
+          } else if (prev && prev.name !== act.name && act.slotKey === 'acc' && simPlayer.inventory.length < MAX_INVEN_SLOTS) {
+            simPlayer.inventory.push({ cat: 'acc', ...prev, desc: prev.desc || prev.effect || '' });
+          }
           simPlayer.equipment[act.slotKey] = { name: act.name, effect: act.effect };
           const label = act.slotKey === 'acc' ? '장신구' : '특수슬롯';
           logText = `[장비] ${label} '${act.name}' 장착 (${act.effect})`;
@@ -1709,6 +1809,20 @@
           logText = act.note
             ? `[수련] '${act.name}' 실시 (대상 스탯: ${act.statLabel} | 지시: ${act.note})`
             : `[수련] '${act.name}' 실시 (대상 스탯: ${act.statLabel} | 판정: 랜덤 상승)`;
+        } else if (act.type === 'awaken_levelup') {
+          const upLv = Math.max(1, Number(act.upLv) || 1);
+          const prevLv = simPlayer.lv;
+          const gainAp = upLv * AP_PER_LEVEL;
+          simPlayer.lv += upLv;
+          simPlayer.exp = 0;
+          for (let i = 0; i < upLv; i++) {
+            simPlayer.maxExp = Math.floor(simPlayer.maxExp * 1.4);
+          }
+          simPlayer.ap = (Number(simPlayer.ap) || 0) + gainAp;
+          simPlayer.hp = calcMaxHp(simPlayer);
+          simPlayer.mp = calcMaxMp(simPlayer);
+          const reasonTag = act.reason ? `'${act.reason}'` : '내면의 각성';
+          logText = `[각성/레벨업] ${reasonTag} 돌파 → LV.${prevLv} → LV.${simPlayer.lv} 달성! (AP +${gainAp} 획득, 잔여 AP ${simPlayer.ap} | HP/MP 회복)`;
         } else if (act.type === 'stat_ap') {
           const meta = STAT_META.find(m => m.key === act.statKey);
           const addAmt = Math.min(Number(act.amount) || 1, simPlayer.ap);
@@ -1822,7 +1936,15 @@
         const notices = [];
 
         if (params.get('job')) player.job = cleanStr(params.get('job'));
-        if (params.get('lv')) player.lv = Math.max(1, parseInt(params.get('lv'), 10) || player.lv);
+        if (params.get('lv')) {
+          const nextLv = Math.max(1, parseInt(params.get('lv'), 10) || player.lv);
+          if (nextLv > player.lv) {
+            for (let i = player.lv; i < nextLv; i++) {
+              player.maxExp = Math.floor(player.maxExp * 1.4);
+            }
+          }
+          player.lv = nextLv;
+        }
         if (params.get('gold') !== null) player.gold = Math.max(0, parseInt(params.get('gold'), 10) || 0);
         if (params.get('ap') !== null) player.ap = Math.max(0, parseInt(params.get('ap'), 10) || 0);
 
@@ -1866,21 +1988,66 @@
           }
         }
 
+        // 장비 동기화 (장착 시 인벤토리 동일 장비 자동 제거 & 교체/해제 시 인벤토리 자동 복귀)
+        const unequippedNamesThisTurn = new Set();
         const equipRaw = params.get('equip');
         if (equipRaw && equipRaw !== 'none' && equipRaw !== 'null') {
+          const applyEquipWithInvenSync = (slotKey, newItem) => {
+            const prev = player.equipment[slotKey];
+            const invIdx = player.inventory.findIndex(it => it.name === newItem.name);
+            if (invIdx !== -1) {
+              if (prev && prev.name !== newItem.name && (slotKey === 'weapon' || slotKey === 'armor' || slotKey === 'acc')) {
+                player.inventory[invIdx] = { cat: slotKey, ...prev, desc: prev.desc || prev.effect || '' };
+                unequippedNamesThisTurn.add(prev.name);
+              } else {
+                player.inventory.splice(invIdx, 1);
+              }
+            } else if (prev && prev.name !== newItem.name && (slotKey === 'weapon' || slotKey === 'armor' || slotKey === 'acc') && player.inventory.length < MAX_INVEN_SLOTS) {
+              player.inventory.push({ cat: slotKey, ...prev, desc: prev.desc || prev.effect || '' });
+              unequippedNamesThisTurn.add(prev.name);
+            }
+            player.equipment[slotKey] = newItem;
+          };
+
           equipRaw.split(',').forEach(entry => {
             const parts = entry.split(':').map(cleanStr);
             if (parts[0] === '해제') {
               const map = { '무기': 'weapon', '방어구': 'armor', '장신구': 'acc', '특수슬롯': 'special' };
-              if (map[parts[1]]) player.equipment[map[parts[1]]] = null;
+              const slotKey = map[parts[1]];
+              if (slotKey) {
+                const prev = player.equipment[slotKey];
+                if (prev && (slotKey === 'weapon' || slotKey === 'armor' || slotKey === 'acc')) {
+                  if (!player.inventory.some(it => it.name === prev.name) && player.inventory.length < MAX_INVEN_SLOTS) {
+                    player.inventory.push({ cat: slotKey, ...prev, desc: prev.desc || prev.effect || '' });
+                    unequippedNamesThisTurn.add(prev.name);
+                  }
+                }
+                player.equipment[slotKey] = null;
+              }
             } else if (parts[0] === '무기' && parts[1]) {
-              player.equipment.weapon = { name: parts[1], statType: parts[2] || '공격력', val: parseInt(parts[3], 10) || 0, desc: parts.slice(4).join(':') || '' };
+              applyEquipWithInvenSync('weapon', {
+                name: parts[1],
+                statType: parts[2] || '공격력',
+                val: parseInt(parts[3], 10) || 0,
+                desc: parts.slice(4).join(':') || ''
+              });
             } else if (parts[0] === '방어구' && parts[1]) {
-              player.equipment.armor = { name: parts[1], hp: parseInt(parts[2], 10) || 0, def: parseInt(parts[3], 10) || 0, desc: parts.slice(4).join(':') || '' };
+              applyEquipWithInvenSync('armor', {
+                name: parts[1],
+                hp: parseInt(parts[2], 10) || 0,
+                def: parseInt(parts[3], 10) || 0,
+                desc: parts.slice(4).join(':') || ''
+              });
             } else if (parts[0] === '장신구' && parts[1]) {
-              player.equipment.acc = { name: parts[1], effect: parts.slice(2).join(':') || '특수 효과' };
+              applyEquipWithInvenSync('acc', {
+                name: parts[1],
+                effect: parts.slice(2).join(':') || '특수 효과'
+              });
             } else if (parts[0] === '특수슬롯' && parts[1]) {
-              player.equipment.special = { name: parts[1], effect: parts.slice(2).join(':') || '특수 효과' };
+              applyEquipWithInvenSync('special', {
+                name: parts[1],
+                effect: parts.slice(2).join(':') || '특수 효과'
+              });
             }
           });
         }
@@ -1927,6 +2094,10 @@
                 }
               }
             } else {
+              // 방금 equip 파라미터 처리로 이미 인벤토리로 복귀된 동일 장비 중복 추가 방지
+              if ((cat === 'weapon' || cat === 'armor' || cat === 'acc') && unequippedNamesThisTurn.has(name)) {
+                return;
+              }
               if (cat === 'consumable') {
                 const isLegacy = ['hp', 'mp', 'both', 'none'].includes((parts[2] || '').toLowerCase());
                 const effectType = isLegacy ? parts[2].toLowerCase() : undefined;
@@ -2163,6 +2334,16 @@
       pushAction({ type: 'job', job: val || '미설정' });
     }
 
+    function queueAwakenLevelUp() {
+      const reasonInp = document.getElementById('inputAwakenReason');
+      const lvInp = document.getElementById('inputAwakenLevels');
+      const upLv = Math.max(1, Math.min(50, parseInt(lvInp ? lvInp.value : '1', 10) || 1));
+      const reason = reasonInp ? reasonInp.value.trim() : '';
+      if (reasonInp) reasonInp.value = '';
+      if (lvInp) lvInp.value = '1';
+      pushAction({ type: 'awaken_levelup', upLv, reason });
+    }
+
     function queueStatAp(statKey) {
       const { simPlayer } = getSimulatedState();
       const avail = Number(simPlayer.ap) || 0;
@@ -2191,6 +2372,8 @@
       if (!name) return;
       nameInp.value = '';
       descInp.value = '';
+      isConditionExpanded = true;
+      focusedConditionIdx = null;
       pushAction({
         type: 'add_status',
         name,
@@ -2199,14 +2382,24 @@
     }
 
     function queueRemoveStatus(idx) {
+      focusedConditionIdx = null;
       pushAction({ type: 'del_status', idx });
     }
 
-    function inspectStatus(idx) {
-      const { simPlayer } = getSimulatedState();
-      const st = simPlayer.statuses[idx];
-      if (!st) return;
-      showNotice(`✨ [${st.name}] ${st.desc}`);
+    function toggleConditionExpand(idx) {
+      if (typeof idx === 'number') {
+        if (isConditionExpanded && focusedConditionIdx === idx) {
+          isConditionExpanded = false;
+          focusedConditionIdx = null;
+        } else {
+          isConditionExpanded = true;
+          focusedConditionIdx = idx;
+        }
+      } else {
+        isConditionExpanded = !isConditionExpanded;
+        if (!isConditionExpanded) focusedConditionIdx = null;
+      }
+      render();
     }
 
     function renderAddSkillSubFields() {
@@ -2872,14 +3065,40 @@
 
       const condRow = document.getElementById('conditionRow');
       const condList = document.getElementById('conditionList');
+      const condToggleBtn = document.getElementById('conditionToggleBtn');
+      const condDetailPanel = document.getElementById('conditionDetailPanel');
+
       if (simPlayer.statuses && simPlayer.statuses.length > 0) {
         condRow.style.display = 'flex';
+        if (focusedConditionIdx !== null && focusedConditionIdx >= simPlayer.statuses.length) {
+          focusedConditionIdx = null;
+        }
         condList.innerHTML = simPlayer.statuses
-          .map((st, idx) => `<span class="condition-badge" onclick="inspectStatus(${idx})" title="${escapeHtml(st.desc)}">${escapeHtml(st.name)}</span>`)
+          .map((st, idx) => {
+            const isAct = isConditionExpanded && (focusedConditionIdx === null || focusedConditionIdx === idx);
+            return `<span class="condition-badge ${isAct ? 'active' : ''}" onclick="event.stopPropagation(); toggleConditionExpand(${idx})">${escapeHtml(st.name)}</span>`;
+          })
+          .join('');
+        condToggleBtn.textContent = isConditionExpanded ? '접기 ▴' : '펼치기 ▾';
+        condDetailPanel.classList.toggle('open', isConditionExpanded);
+        condDetailPanel.innerHTML = simPlayer.statuses
+          .map((st, idx) => {
+            const isFocus = focusedConditionIdx === idx;
+            return `
+              <div class="condition-detail-item ${isFocus ? 'active' : ''}">
+                <div class="condition-detail-item-title">✨ ${escapeHtml(st.name)}</div>
+                <div class="condition-detail-item-desc">${escapeHtml(st.desc)}</div>
+              </div>
+            `;
+          })
           .join('');
       } else {
+        isConditionExpanded = false;
+        focusedConditionIdx = null;
         condRow.style.display = 'none';
         condList.innerHTML = '';
+        condDetailPanel.classList.remove('open');
+        condDetailPanel.innerHTML = '';
       }
 
       document.getElementById('metaDateTime').textContent = `📅 ${turnData.date} · ${turnData.time}`;
