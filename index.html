@@ -1039,12 +1039,12 @@
     <div class="drawer" id="drawer-equip">
       <div class="drawer-header">
         <span>🛡️ 장착 장비</span>
-        <span style="font-size:11px; color:#64748b;">항목 터치 시 상세 · 설정 열림</span>
+        <span style="font-size:11px; color:#64748b;">항목 터치 시 상세 · 강화 수정 열림</span>
       </div>
       <div id="equipSlotList" class="flex-col"></div>
     </div>
 
-    <!-- 접이식 창 2: 인벤토리 (상시 노출 자율 아이템 획득 박스 포함) -->
+    <!-- 접이식 창 2: 인벤토리 (상시 노출 자율 아이템 획득 + 개별 아이템 수정) -->
     <div class="drawer" id="drawer-inven">
       <div class="drawer-header">
         <span>🎒 인벤토리</span>
@@ -1356,6 +1356,8 @@
 
     let activeDrawer = null;
     let expandedEquipSlot = null;
+    let editingEquipSlot = null;
+    let editingInvenIdx = null;
     let editingSkillId = null;
     let editingStatusIdx = null;
     let pendingVariableSkillId = null;
@@ -1521,6 +1523,8 @@
         restored.lastSyncedTurn = 0;
         player = restored;
         actionQueue = [];
+        editingEquipSlot = null;
+        editingInvenIdx = null;
         editingSkillId = null;
         editingStatusIdx = null;
         pendingVariableSkillId = null;
@@ -1761,6 +1765,27 @@
           simPlayer.equipment[act.slotKey] = { name: act.name, effect: act.effect };
           const label = act.slotKey === 'acc' ? '장신구' : '특수슬롯';
           logText = `[장비] ${label} '${act.name}' 장착 (${act.effect})`;
+        } else if (act.type === 'edit_equip_item') {
+          const prev = simPlayer.equipment[act.slotKey];
+          if (prev) {
+            const prevName = prev.name;
+            const next = deepClone(act.updated);
+            simPlayer.equipment[act.slotKey] = next;
+            const effMaxHp = calcMaxHp(simPlayer);
+            if (simPlayer.hp > effMaxHp) simPlayer.hp = effMaxHp;
+
+            const labelMap = { weapon: '무기', armor: '방어구', acc: '장신구', special: '특수슬롯' };
+            const renameTag = prevName !== next.name ? `'${prevName}' → '${next.name}'` : `'${next.name}'`;
+            let specStr = '';
+            if (act.slotKey === 'weapon') {
+              specStr = `${next.statType} +${next.val} | ${next.desc || '설명 없음'}`;
+            } else if (act.slotKey === 'armor') {
+              specStr = `HP +${next.hp}, 방어력 +${next.def} | ${next.desc || '설명 없음'}`;
+            } else {
+              specStr = next.effect || '특수 효과 없음';
+            }
+            logText = `[장비 강화/수정] ${labelMap[act.slotKey]} ${renameTag} (${specStr})`;
+          }
         } else if (act.type === 'use_item') {
           const item = simPlayer.inventory[act.idx];
           if (item && item.cat === 'consumable') {
@@ -1795,6 +1820,28 @@
           if (item) {
             simPlayer.inventory.splice(act.idx, 1);
             logText = `[아이템] '${item.name}' 버림`;
+          }
+        } else if (act.type === 'edit_inven_item') {
+          const prev = simPlayer.inventory[act.idx];
+          if (prev) {
+            const prevName = prev.name;
+            const next = deepClone(act.updated);
+            simPlayer.inventory[act.idx] = next;
+            const renameTag = prevName !== next.name ? `'${prevName}' → '${next.name}'` : `'${next.name}'`;
+            let specStr = '';
+            if (next.cat === 'weapon') {
+              specStr = `무기 | ${next.statType} +${next.val} | ${next.desc}`;
+            } else if (next.cat === 'armor') {
+              specStr = `방어구 | HP +${next.hp}, 방어 +${next.def} | ${next.desc}`;
+            } else if (next.cat === 'acc') {
+              specStr = `장신구 | ${next.desc}`;
+            } else if (next.cat === 'consumable') {
+              const healPart = Number(next.val) > 0 ? `회복 +${next.val} · ` : '';
+              specStr = `회복 | ${healPart}수량 ${next.qty}개 | ${next.desc}`;
+            } else {
+              specStr = `기타 | 수량 ${next.qty}개 | ${next.desc}`;
+            }
+            logText = `[아이템 강화/수정] ${renameTag} (${specStr})`;
           }
         } else if (act.type === 'add_item') {
           const newItem = deepClone(act.item);
@@ -2016,11 +2063,16 @@
           }
         }
 
-        // 장비 동기화 (장착 시 인벤토리 동일 장비 자동 제거 & 교체/해제 시 인벤토리 자동 복귀)
+        // 장비 동기화 (장착 시 인벤토리 동일 장비 자동 제거 & 교체/해제 시 인벤토리 자동 복귀 + 강화/수정 지원)
         const unequippedNamesThisTurn = new Set();
+        let hasUnequipThisTurn = false;
         const equipRaw = params.get('equip');
         if (equipRaw && equipRaw !== 'none' && equipRaw !== 'null') {
-          const applyEquipWithInvenSync = (slotKey, newItem) => {
+          const applyEquipWithInvenSync = (slotKey, newItem, isInPlaceModify) => {
+            if (isInPlaceModify) {
+              player.equipment[slotKey] = newItem;
+              return;
+            }
             const prev = player.equipment[slotKey];
             const invIdx = player.inventory.findIndex(it => it.name === newItem.name);
             if (invIdx !== -1) {
@@ -2038,8 +2090,15 @@
           };
 
           equipRaw.split(',').forEach(entry => {
-            const parts = entry.split(':').map(cleanStr);
+            let parts = entry.split(':').map(cleanStr);
+            let isInPlaceModify = false;
+            if (parts[0] === '수정' || parts[0] === '강화') {
+              isInPlaceModify = true;
+              parts = parts.slice(1);
+            }
+
             if (parts[0] === '해제') {
+              hasUnequipThisTurn = true;
               const map = { '무기': 'weapon', '방어구': 'armor', '장신구': 'acc', '특수슬롯': 'special' };
               const slotKey = map[parts[1]];
               if (slotKey) {
@@ -2058,24 +2117,24 @@
                 statType: parts[2] || '공격력',
                 val: parseInt(parts[3], 10) || 0,
                 desc: parts.slice(4).join(':') || ''
-              });
+              }, isInPlaceModify);
             } else if (parts[0] === '방어구' && parts[1]) {
               applyEquipWithInvenSync('armor', {
                 name: parts[1],
                 hp: parseInt(parts[2], 10) || 0,
                 def: parseInt(parts[3], 10) || 0,
                 desc: parts.slice(4).join(':') || ''
-              });
+              }, isInPlaceModify);
             } else if (parts[0] === '장신구' && parts[1]) {
               applyEquipWithInvenSync('acc', {
                 name: parts[1],
                 effect: parts.slice(2).join(':') || '특수 효과'
-              });
+              }, isInPlaceModify);
             } else if (parts[0] === '특수슬롯' && parts[1]) {
               applyEquipWithInvenSync('special', {
                 name: parts[1],
                 effect: parts.slice(2).join(':') || '특수 효과'
-              });
+              }, isInPlaceModify);
             }
           });
         }
@@ -2088,6 +2147,7 @@
             if (!trimmed) return;
 
             let op = '+';
+            let isInPlaceEdit = false;
             let body = trimmed;
             if (trimmed.startsWith('-')) {
               op = '-';
@@ -2098,6 +2158,10 @@
             } else if (/^(삭제|제거|del|remove)\s*:/i.test(trimmed)) {
               op = '-';
               body = trimmed.replace(/^(삭제|제거|del|remove)\s*:/i, '').trim();
+            } else if (/^(수정|강화|edit|upgrade)\s*:/i.test(trimmed)) {
+              op = '+';
+              isInPlaceEdit = true;
+              body = trimmed.replace(/^(수정|강화|edit|upgrade)\s*:/i, '').trim();
             } else if (/^(추가|습득|획득|add)\s*:/i.test(trimmed)) {
               op = '+';
               body = trimmed.replace(/^(추가|습득|획득|add)\s*:/i, '').trim();
@@ -2122,7 +2186,8 @@
                 }
               }
             } else {
-              if ((cat === 'weapon' || cat === 'armor' || cat === 'acc') && unequippedNamesThisTurn.has(name)) {
+              const isDupOnUnequip = hasUnequipThisTurn && player.inventory.some(it => it.cat === cat && it.name === name);
+              if ((cat === 'weapon' || cat === 'armor' || cat === 'acc') && (unequippedNamesThisTurn.has(name) || isDupOnUnequip)) {
                 return;
               }
               if (cat === 'consumable') {
@@ -2132,32 +2197,52 @@
                 const qty = parseInt(isLegacy ? parts[4] : parts[3], 10) || 1;
                 const desc = (isLegacy ? parts.slice(5).join(':') : parts.slice(4).join(':')) || (val > 0 ? `사용 시 ${val} 회복` : '회복 아이템');
                 const ex = player.inventory.find(it => it.cat === 'consumable' && it.name === name);
-                if (ex) ex.qty = (ex.qty || 1) + qty;
-                else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push({ cat, name, effectType, val, qty, desc });
+                if (ex) {
+                  if (isInPlaceEdit) {
+                    ex.val = val;
+                    ex.qty = qty;
+                    ex.desc = desc;
+                  } else {
+                    ex.qty = (ex.qty || 1) + qty;
+                  }
+                } else if (player.inventory.length < MAX_INVEN_SLOTS) {
+                  player.inventory.push({ cat, name, effectType, val, qty, desc });
+                }
               } else if (cat === 'weapon') {
-                if (player.inventory.length < MAX_INVEN_SLOTS) {
-                  const valNum = parseInt(parts[3], 10) || 0;
-                  const desc = parts.slice(4).join(':') || `${parts[2] || '공격력'} +${valNum} 무기`;
-                  player.inventory.push({ cat, name, statType: parts[2] || '공격력', val: valNum, desc });
-                }
+                const valNum = parseInt(parts[3], 10) || 0;
+                const desc = parts.slice(4).join(':') || `${parts[2] || '공격력'} +${valNum} 무기`;
+                const nextObj = { cat, name, statType: parts[2] || '공격력', val: valNum, desc };
+                const exIdx = player.inventory.findIndex(it => it.cat === 'weapon' && it.name === name);
+                if (exIdx !== -1) player.inventory[exIdx] = nextObj;
+                else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push(nextObj);
               } else if (cat === 'armor') {
-                if (player.inventory.length < MAX_INVEN_SLOTS) {
-                  const hpNum = parseInt(parts[2], 10) || 0;
-                  const defNum = parseInt(parts[3], 10) || 0;
-                  const desc = parts.slice(4).join(':') || `HP +${hpNum}, 방어력 +${defNum} 방어구`;
-                  player.inventory.push({ cat, name, hp: hpNum, def: defNum, desc });
-                }
+                const hpNum = parseInt(parts[2], 10) || 0;
+                const defNum = parseInt(parts[3], 10) || 0;
+                const desc = parts.slice(4).join(':') || `HP +${hpNum}, 방어력 +${defNum} 방어구`;
+                const nextObj = { cat, name, hp: hpNum, def: defNum, desc };
+                const exIdx = player.inventory.findIndex(it => it.cat === 'armor' && it.name === name);
+                if (exIdx !== -1) player.inventory[exIdx] = nextObj;
+                else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push(nextObj);
               } else if (cat === 'acc') {
-                if (player.inventory.length < MAX_INVEN_SLOTS) {
-                  const desc = parts.slice(2).join(':') || '장착 가능한 장신구';
-                  player.inventory.push({ cat, name, effect: desc, desc });
-                }
+                const desc = parts.slice(2).join(':') || '장착 가능한 장신구';
+                const nextObj = { cat, name, effect: desc, desc };
+                const exIdx = player.inventory.findIndex(it => it.cat === 'acc' && it.name === name);
+                if (exIdx !== -1) player.inventory[exIdx] = nextObj;
+                else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push(nextObj);
               } else {
                 const qty = parseInt(hasCat ? parts[2] : parts[1], 10) || 1;
                 const desc = (hasCat ? parts.slice(3).join(':') : parts.slice(2).join(':')) || '소지 중인 기타 · 특수 물품';
                 const ex = player.inventory.find(it => it.cat === 'misc' && it.name === name);
-                if (ex) ex.qty = (ex.qty || 1) + qty;
-                else if (player.inventory.length < MAX_INVEN_SLOTS) player.inventory.push({ cat: 'misc', name, qty, desc });
+                if (ex) {
+                  if (isInPlaceEdit) {
+                    ex.qty = qty;
+                    ex.desc = desc;
+                  } else {
+                    ex.qty = (ex.qty || 1) + qty;
+                  }
+                } else if (player.inventory.length < MAX_INVEN_SLOTS) {
+                  player.inventory.push({ cat: 'misc', name, qty, desc });
+                }
               }
             }
           });
@@ -2288,6 +2373,8 @@
 
     function removeQueuedAction(idx) {
       actionQueue.splice(idx, 1);
+      editingEquipSlot = null;
+      editingInvenIdx = null;
       editingStatusIdx = null;
       render();
     }
@@ -2295,6 +2382,8 @@
     function clearActionQueue() {
       actionQueue = [];
       pendingVariableSkillId = null;
+      editingEquipSlot = null;
+      editingInvenIdx = null;
       editingStatusIdx = null;
       render();
     }
@@ -2346,8 +2435,51 @@
     }
 
     function toggleEquipSlot(slotKey) {
-      expandedEquipSlot = expandedEquipSlot === slotKey ? null : slotKey;
+      if (expandedEquipSlot === slotKey) {
+        expandedEquipSlot = null;
+        editingEquipSlot = null;
+      } else {
+        expandedEquipSlot = slotKey;
+        editingEquipSlot = null;
+      }
       render();
+    }
+
+    function toggleEditEquip(slotKey) {
+      editingEquipSlot = editingEquipSlot === slotKey ? null : slotKey;
+      render();
+    }
+
+    function queueSaveEditEquip(slotKey) {
+      const nameEl = document.getElementById(`edit-eq-name-${slotKey}`);
+      const name = nameEl ? nameEl.value.trim() : '';
+      if (!name) return;
+
+      let updated = null;
+      if (slotKey === 'weapon') {
+        const typeEl = document.getElementById(`edit-eq-type-${slotKey}`);
+        const valEl = document.getElementById(`edit-eq-val-${slotKey}`);
+        const descEl = document.getElementById(`edit-eq-desc-${slotKey}`);
+        const statType = typeEl ? typeEl.value : '공격력';
+        const val = Math.max(0, parseInt(valEl ? valEl.value : '0', 10) || 0);
+        const desc = descEl ? descEl.value.trim() : '';
+        updated = { name, statType, val, desc: desc || `${statType} +${val} 무기` };
+      } else if (slotKey === 'armor') {
+        const hpEl = document.getElementById(`edit-eq-hp-${slotKey}`);
+        const defEl = document.getElementById(`edit-eq-def-${slotKey}`);
+        const descEl = document.getElementById(`edit-eq-desc-${slotKey}`);
+        const hp = Math.max(0, parseInt(hpEl ? hpEl.value : '0', 10) || 0);
+        const def = Math.max(0, parseInt(defEl ? defEl.value : '0', 10) || 0);
+        const desc = descEl ? descEl.value.trim() : '';
+        updated = { name, hp, def, desc: desc || `HP +${hp}, 방어력 +${def} 방어구` };
+      } else {
+        const effEl = document.getElementById(`edit-eq-effect-${slotKey}`);
+        const effect = effEl ? effEl.value.trim() : '';
+        updated = { name, effect: effect || '특수 효과 없음' };
+      }
+
+      editingEquipSlot = null;
+      pushAction({ type: 'edit_equip_item', slotKey, updated });
     }
 
     function startTraining(trainId) {
@@ -2555,8 +2687,58 @@
 
       document.getElementById('newItemName').value = '';
       document.getElementById('newItemDesc').value = '';
+      editingInvenIdx = null;
       renderAddItemSubFields();
       pushAction({ type: 'add_item', item: itemObj });
+    }
+
+    function toggleEditInven(idx) {
+      editingInvenIdx = editingInvenIdx === idx ? null : idx;
+      render();
+    }
+
+    function queueSaveEditInven(idx) {
+      const { simPlayer } = getSimulatedState();
+      const orig = simPlayer.inventory[idx];
+      if (!orig) return;
+
+      const nameEl = document.getElementById(`edit-inv-name-${idx}`);
+      const descEl = document.getElementById(`edit-inv-desc-${idx}`);
+      const name = nameEl ? nameEl.value.trim() : '';
+      if (!name) return;
+      const desc = descEl ? descEl.value.trim() : '';
+
+      let updated = { ...deepClone(orig), name };
+      if (orig.cat === 'weapon') {
+        const typeEl = document.getElementById(`edit-inv-type-${idx}`);
+        const valEl = document.getElementById(`edit-inv-val-${idx}`);
+        updated.statType = typeEl ? typeEl.value : '공격력';
+        updated.val = Math.max(0, parseInt(valEl ? valEl.value : '0', 10) || 0);
+        updated.desc = desc || `${updated.statType} +${updated.val} 무기`;
+      } else if (orig.cat === 'armor') {
+        const hpEl = document.getElementById(`edit-inv-hp-${idx}`);
+        const defEl = document.getElementById(`edit-inv-def-${idx}`);
+        updated.hp = Math.max(0, parseInt(hpEl ? hpEl.value : '0', 10) || 0);
+        updated.def = Math.max(0, parseInt(defEl ? defEl.value : '0', 10) || 0);
+        updated.desc = desc || `HP +${updated.hp}, 방어력 +${updated.def} 방어구`;
+      } else if (orig.cat === 'acc') {
+        const finalDesc = desc || '장착 가능한 장신구';
+        updated.effect = finalDesc;
+        updated.desc = finalDesc;
+      } else if (orig.cat === 'consumable') {
+        const valEl = document.getElementById(`edit-inv-val-${idx}`);
+        const qtyEl = document.getElementById(`edit-inv-qty-${idx}`);
+        updated.val = Math.max(0, parseInt(valEl ? valEl.value : '0', 10) || 0);
+        updated.qty = Math.max(1, parseInt(qtyEl ? qtyEl.value : '1', 10) || 1);
+        updated.desc = desc || (updated.val > 0 ? `사용 시 ${updated.val} 회복` : '사용 가능한 회복 아이템');
+      } else {
+        const qtyEl = document.getElementById(`edit-inv-qty-${idx}`);
+        updated.qty = Math.max(1, parseInt(qtyEl ? qtyEl.value : '1', 10) || 1);
+        updated.desc = desc || '소지 중인 기타 · 특수 물품';
+      }
+
+      editingInvenIdx = null;
+      pushAction({ type: 'edit_inven_item', idx, updated });
     }
 
     function queueNewSkill() {
@@ -2666,14 +2848,20 @@
     }
 
     function queueEquipFromInven(idx) {
-      pushAction({ type: 'equip_from_inven', idx });
+      const { simPlayer } = getSimulatedState();
+      const item = simPlayer.inventory[idx];
+      if (!item) return;
+      editingInvenIdx = null;
+      pushAction({ type: 'equip_from_inven', idx, slotKey: item.cat });
     }
 
     function queueUseInvenItem(idx) {
+      editingInvenIdx = null;
       pushAction({ type: 'use_item', idx });
     }
 
     function queueDiscardItem(idx) {
+      editingInvenIdx = null;
       pushAction({ type: 'discard_item', idx });
     }
 
@@ -2683,10 +2871,23 @@
       const name = (nameInput ? nameInput.value : '').trim();
       const effect = (effectInput ? effectInput.value : '').trim();
       if (!name) return;
+      editingEquipSlot = null;
       pushAction({ type: 'custom_equip', slotKey, name, effect: effect || '특수 효과 없음' });
     }
 
     function queueUnequipSlot(slotKey) {
+      editingEquipSlot = null;
+      // 같은 턴 대기열에서 방금 장착한 장비라면 두 행동을 상쇄시켜 중복 로그 원천 차단
+      for (let i = actionQueue.length - 1; i >= 0; i--) {
+        const act = actionQueue[i];
+        if ((act.type === 'equip_from_inven' || act.type === 'custom_equip') && act.slotKey === slotKey) {
+          actionQueue.splice(i, 1);
+          render();
+          showNotice('↩️ 같은 턴에 장착했던 장비를 해제하여 이전 상태로 되돌렸습니다.');
+          return;
+        }
+      }
+
       const { simPlayer } = getSimulatedState();
       if ((slotKey === 'weapon' || slotKey === 'armor' || slotKey === 'acc') && simPlayer.inventory.length >= MAX_INVEN_SLOTS) {
         showNotice('⚠️ 인벤토리(10/10칸)가 가득 차서 해제할 수 없습니다.');
@@ -2811,6 +3012,7 @@
 
       document.getElementById('equipSlotList').innerHTML = slots.map(s => {
         const isOpen = expandedEquipSlot === s.key;
+        const isEditing = editingEquipSlot === s.key;
         const titleHtml = s.item
           ? `<span>${escapeHtml(s.item.name)}</span>`
           : `<span class="slot-empty">비어 있음</span>`;
@@ -2819,12 +3021,34 @@
         if (s.key === 'weapon') {
           if (s.item) {
             const statType = s.item.statType || '공격력';
+            const editFormHtml = isEditing ? `
+              <div class="skill-edit-box">
+                <div class="input-inline">
+                  <input id="edit-eq-name-weapon" value="${escapeHtml(s.item.name)}" placeholder="무기 이름" />
+                  <select id="edit-eq-type-weapon" style="width:92px; flex-shrink:0;">
+                    <option value="공격력" ${statType === '공격력' ? 'selected' : ''}>공격력</option>
+                    <option value="마력" ${statType === '마력' ? 'selected' : ''}>마력</option>
+                  </select>
+                  <input type="number" id="edit-eq-val-weapon" value="${Number(s.item.val) || 0}" min="0" placeholder="수치" style="width:76px; flex-shrink:0;" />
+                </div>
+                <div class="input-inline">
+                  <input id="edit-eq-desc-weapon" value="${escapeHtml(s.item.desc || '')}" placeholder="강화/각성 설명 입력" onkeydown="if(event.key==='Enter') queueSaveEditEquip('weapon')" />
+                  <button class="mini-btn primary" onclick="queueSaveEditEquip('weapon')">저장</button>
+                  <button class="mini-btn" onclick="toggleEditEquip('weapon')">취소</button>
+                </div>
+              </div>
+            ` : '';
+
             detailHtml = `
-              <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
                 <span class="stat-pill">${escapeHtml(statType)} +${Number(s.item.val) || 0}</span>
-                <button class="mini-btn danger" onclick="queueUnequipSlot('weapon')">해제</button>
+                <div class="list-btns">
+                  <button class="mini-btn" onclick="toggleEditEquip('weapon')">수정</button>
+                  <button class="mini-btn danger" onclick="queueUnequipSlot('weapon')">해제</button>
+                </div>
               </div>
               ${s.item.desc ? `<div style="color:#94a3b8; font-size:11px;">${escapeHtml(s.item.desc)}</div>` : ''}
+              ${editFormHtml}
             `;
           } else {
             detailHtml = `<div style="color:#64748b; font-size:11px;">장착된 무기가 없습니다. (능력치: 공격력 / 마력 +0)</div>`;
@@ -2835,12 +3059,32 @@
             if (Number(s.item.hp) > 0) badges.push(`<span class="stat-pill">HP +${Number(s.item.hp)}</span>`);
             if (Number(s.item.def) > 0) badges.push(`<span class="stat-pill">방어력 +${Number(s.item.def)}</span>`);
             if (badges.length === 0) badges.push(`<span class="stat-pill">방어력 +0</span>`);
+
+            const editFormHtml = isEditing ? `
+              <div class="skill-edit-box">
+                <div class="input-inline">
+                  <input id="edit-eq-name-armor" value="${escapeHtml(s.item.name)}" placeholder="방어구 이름" />
+                  <input type="number" id="edit-eq-hp-armor" value="${Number(s.item.hp) || 0}" min="0" placeholder="HP (+n)" style="width:78px; flex-shrink:0;" />
+                  <input type="number" id="edit-eq-def-armor" value="${Number(s.item.def) || 0}" min="0" placeholder="방어 (+n)" style="width:78px; flex-shrink:0;" />
+                </div>
+                <div class="input-inline">
+                  <input id="edit-eq-desc-armor" value="${escapeHtml(s.item.desc || '')}" placeholder="강화/각성 설명 입력" onkeydown="if(event.key==='Enter') queueSaveEditEquip('armor')" />
+                  <button class="mini-btn primary" onclick="queueSaveEditEquip('armor')">저장</button>
+                  <button class="mini-btn" onclick="toggleEditEquip('armor')">취소</button>
+                </div>
+              </div>
+            ` : '';
+
             detailHtml = `
               <div style="display:flex; justify-content:space-between; align-items:center; gap:6px;">
                 <div style="display:flex; flex-wrap:wrap; gap:4px;">${badges.join('')}</div>
-                <button class="mini-btn danger" onclick="queueUnequipSlot('armor')">해제</button>
+                <div class="list-btns">
+                  <button class="mini-btn" onclick="toggleEditEquip('armor')">수정</button>
+                  <button class="mini-btn danger" onclick="queueUnequipSlot('armor')">해제</button>
+                </div>
               </div>
               ${s.item.desc ? `<div style="color:#94a3b8; font-size:11px;">${escapeHtml(s.item.desc)}</div>` : ''}
+              ${editFormHtml}
             `;
           } else {
             detailHtml = `<div style="color:#64748b; font-size:11px;">장착된 방어구가 없습니다. (능력치: HP +0 / 방어력 +0)</div>`;
@@ -2851,24 +3095,42 @@
           const effectPlaceholder = isAcc ? '능력치 · 효과 입력 (예: 마력 +10)' : '자유 설정 및 효과 입력';
           const btnText = isAcc ? '착용' : '등록';
 
-          detailHtml = `
-            ${s.item ? `
+          if (s.item) {
+            const editFormHtml = isEditing ? `
+              <div class="skill-edit-box">
+                <input id="edit-eq-name-${s.key}" value="${escapeHtml(s.item.name)}" placeholder="${namePlaceholder}" />
+                <div class="input-inline">
+                  <input id="edit-eq-effect-${s.key}" value="${escapeHtml(s.item.effect || '')}" placeholder="${effectPlaceholder}" onkeydown="if(event.key==='Enter') queueSaveEditEquip('${s.key}')" />
+                  <button class="mini-btn primary" onclick="queueSaveEditEquip('${s.key}')">저장</button>
+                  <button class="mini-btn" onclick="toggleEditEquip('${s.key}')">취소</button>
+                </div>
+              </div>
+            ` : '';
+
+            detailHtml = `
               <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; background:#191d2b; padding:6px 8px; border-radius:6px;">
                 <div>
                   <div style="font-weight:700; color:#e2e8f0;">${escapeHtml(s.item.name)}</div>
                   <div style="color:#a5b4fc; font-size:11px;">${escapeHtml(s.item.effect)}</div>
                 </div>
-                <button class="mini-btn danger" onclick="queueUnequipSlot('${s.key}')">해제</button>
+                <div class="list-btns">
+                  <button class="mini-btn" onclick="toggleEditEquip('${s.key}')">수정</button>
+                  <button class="mini-btn danger" onclick="queueUnequipSlot('${s.key}')">해제</button>
+                </div>
               </div>
-            ` : ''}
-            <div class="input-row">
-              <input id="input-${s.key}-name" placeholder="${namePlaceholder}" value="${s.item ? escapeHtml(s.item.name) : ''}" />
-              <div class="input-inline">
-                <input id="input-${s.key}-effect" placeholder="${effectPlaceholder}" value="${s.item ? escapeHtml(s.item.effect) : ''}" />
-                <button class="mini-btn primary" onclick="queueCustomEquip('${s.key}')">${btnText}</button>
+              ${editFormHtml}
+            `;
+          } else {
+            detailHtml = `
+              <div class="input-row">
+                <input id="input-${s.key}-name" placeholder="${namePlaceholder}" />
+                <div class="input-inline">
+                  <input id="input-${s.key}-effect" placeholder="${effectPlaceholder}" />
+                  <button class="mini-btn primary" onclick="queueCustomEquip('${s.key}')">${btnText}</button>
+                </div>
               </div>
-            </div>
-          `;
+            `;
+          }
         }
 
         return `
@@ -2897,6 +3159,7 @@
       container.innerHTML = list.map((item, idx) => {
         let badgeHtml = '';
         let actionBtnHtml = '';
+        const isEditing = editingInvenIdx === idx;
 
         if (item.cat === 'weapon') {
           badgeHtml = `<span class="stat-pill">${escapeHtml(item.statType || '공격력')} +${Number(item.val) || 0}</span>`;
@@ -2922,6 +3185,55 @@
           ? ` <span style="color:#fbbf24;">×${item.qty}</span>`
           : '';
 
+        let editBoxHtml = '';
+        if (isEditing) {
+          let statInputsHtml = '';
+          if (item.cat === 'weapon') {
+            const stType = item.statType || '공격력';
+            statInputsHtml = `
+              <div class="input-inline">
+                <select id="edit-inv-type-${idx}" style="width:92px; flex-shrink:0;">
+                  <option value="공격력" ${stType === '공격력' ? 'selected' : ''}>공격력</option>
+                  <option value="마력" ${stType === '마력' ? 'selected' : ''}>마력</option>
+                </select>
+                <input type="number" id="edit-inv-val-${idx}" value="${Number(item.val) || 0}" min="0" placeholder="추가 수치 (+n)" />
+              </div>
+            `;
+          } else if (item.cat === 'armor') {
+            statInputsHtml = `
+              <div class="input-inline">
+                <input type="number" id="edit-inv-hp-${idx}" value="${Number(item.hp) || 0}" min="0" placeholder="HP (+n)" />
+                <input type="number" id="edit-inv-def-${idx}" value="${Number(item.def) || 0}" min="0" placeholder="방어력 (+n)" />
+              </div>
+            `;
+          } else if (item.cat === 'consumable') {
+            statInputsHtml = `
+              <div class="input-inline">
+                <input type="number" id="edit-inv-val-${idx}" value="${Number(item.val) || 0}" min="0" placeholder="회복량" />
+                <input type="number" id="edit-inv-qty-${idx}" value="${Number(item.qty) || 1}" min="1" placeholder="수량" style="width:86px; flex-shrink:0;" />
+              </div>
+            `;
+          } else if (item.cat === 'misc') {
+            statInputsHtml = `
+              <div class="input-inline">
+                <input type="number" id="edit-inv-qty-${idx}" value="${Number(item.qty) || 1}" min="1" placeholder="수량" />
+              </div>
+            `;
+          }
+
+          editBoxHtml = `
+            <div class="skill-edit-box">
+              <input id="edit-inv-name-${idx}" value="${escapeHtml(item.name)}" placeholder="아이템 이름" />
+              ${statInputsHtml}
+              <div class="input-inline">
+                <input id="edit-inv-desc-${idx}" value="${escapeHtml(item.desc || item.effect || '')}" placeholder="한 줄 설명 / 효과 입력" onkeydown="if(event.key==='Enter') queueSaveEditInven(${idx})" />
+                <button class="mini-btn primary" onclick="queueSaveEditInven(${idx})">저장</button>
+                <button class="mini-btn" onclick="toggleEditInven(${idx})">취소</button>
+              </div>
+            </div>
+          `;
+        }
+
         return `
           <div class="list-card">
             <div class="list-card-top">
@@ -2931,10 +3243,12 @@
               </div>
               <div class="list-btns">
                 ${actionBtnHtml}
+                <button class="mini-btn" onclick="toggleEditInven(${idx})">수정</button>
                 <button class="mini-btn danger" onclick="queueDiscardItem(${idx})">버리기</button>
               </div>
             </div>
-            <div class="list-desc">${escapeHtml(item.desc || '설명 없음')}</div>
+            <div class="list-desc">${escapeHtml(item.desc || item.effect || '설명 없음')}</div>
+            ${editBoxHtml}
           </div>
         `;
       }).join('');
