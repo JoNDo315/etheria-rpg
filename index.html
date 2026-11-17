@@ -354,7 +354,7 @@
       border-bottom: 1px solid #23293d;
     }
 
-    /* 상시 노출 자율 입력 카드 (백지 상태창 / 아이템 습득) */
+    /* 상시 노출 자율 입력 카드 (백지 상태창 / 아이템 획득) */
     .creation-card {
       background: #161b2c;
       border: 1px solid #4338ca;
@@ -1044,7 +1044,7 @@
       <div id="equipSlotList" class="flex-col"></div>
     </div>
 
-    <!-- 접이식 창 2: 인벤토리 (상시 노출 자율 아이템 습득 박스 포함) -->
+    <!-- 접이식 창 2: 인벤토리 (상시 노출 자율 아이템 획득 박스 포함) -->
     <div class="drawer" id="drawer-inven">
       <div class="drawer-header">
         <span>🎒 인벤토리</span>
@@ -1061,14 +1061,14 @@
         </div>
       </div>
 
-      <!-- 상시 노출 자율 입력칸: 신규 아이템 직접 습득 -->
+      <!-- 상시 노출 자율 입력칸: 신규 아이템 직접 획득 -->
       <div class="creation-card">
         <div class="creation-title">
-          <span>📦 [자율 습득] 신규 아이템 등록</span>
+          <span>📦 [자율 획득] 신규 아이템 등록</span>
           <span class="creation-hint">분류 선택 후 즉시 등록</span>
         </div>
         <div class="input-inline">
-          <input id="newItemName" class="highlight-input" placeholder="습득한 아이템 이름 입력" />
+          <input id="newItemName" class="highlight-input" placeholder="획득한 아이템 이름 입력" />
           <select id="newItemCat" style="width:112px; flex-shrink:0;" onchange="renderAddItemSubFields()">
             <option value="weapon">무기</option>
             <option value="armor">방어구</option>
@@ -1076,7 +1076,7 @@
             <option value="consumable">회복</option>
             <option value="misc">기타 및 특수</option>
           </select>
-          <button class="mini-btn primary" onclick="queueNewItem()">습득</button>
+          <button class="mini-btn primary" onclick="queueNewItem()">획득</button>
         </div>
         <div id="newItemSubFields" class="input-inline"></div>
         <input id="newItemDesc" placeholder="한 줄 설명 입력 (회복 대상 HP/MP, 장비 효과 등 자유 기입)" />
@@ -1813,7 +1813,7 @@
           else if (newItem.cat === 'consumable') {
             specStr = Number(newItem.val) > 0 ? `회복 +${newItem.val}` : `회복`;
           }
-          logText = `[아이템 습득] '${newItem.name}${qtyStr}' (${specStr} | ${newItem.desc})`;
+          logText = `[아이템 획득] '${newItem.name}${qtyStr}' (${specStr} | ${newItem.desc})`;
         } else if (act.type === 'gold') {
           const before = simPlayer.gold;
           simPlayer.gold = Math.max(0, simPlayer.gold + act.delta);
@@ -2098,9 +2098,9 @@
             } else if (/^(삭제|제거|del|remove)\s*:/i.test(trimmed)) {
               op = '-';
               body = trimmed.replace(/^(삭제|제거|del|remove)\s*:/i, '').trim();
-            } else if (/^(추가|습득|add)\s*:/i.test(trimmed)) {
+            } else if (/^(추가|습득|획득|add)\s*:/i.test(trimmed)) {
               op = '+';
-              body = trimmed.replace(/^(추가|습득|add)\s*:/i, '').trim();
+              body = trimmed.replace(/^(추가|습득|획득|add)\s*:/i, '').trim();
             }
 
             const parts = body.split(':').map(cleanStr);
